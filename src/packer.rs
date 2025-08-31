@@ -1,11 +1,7 @@
-use std::io::Write;
+use crate::{error::ReplayError, replay::Replay, types::*};
 use byteorder::{LittleEndian, WriteBytesExt};
 use lzma_rs::lzma_compress;
-use crate::{
-    types::*,
-    error::ReplayError,
-    replay::Replay,
-};
+use std::io::Write;
 
 /// Helper struct for packing data into .osr format
 pub struct Packer {
@@ -54,13 +50,13 @@ impl Packer {
         loop {
             let mut byte = (value & 0x7f) as u8;
             value >>= 7;
-            
+
             if value != 0 {
                 byte |= 0x80;
             }
-            
+
             writer.write_u8(byte)?;
-            
+
             if value == 0 {
                 break;
             }
@@ -83,22 +79,31 @@ impl Packer {
         Ok(())
     }
 
-    fn pack_timestamp(&self, writer: &mut impl Write, timestamp: &chrono::DateTime<chrono::Utc>) -> Result<(), ReplayError> {
+    fn pack_timestamp(
+        &self,
+        writer: &mut impl Write,
+        timestamp: &chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), ReplayError> {
         // Windows ticks start from year 1 AD, Unix epoch starts from 1970
         // There are 621355968000000000 ticks between year 1 and Unix epoch
         const TICKS_TO_UNIX_EPOCH: i64 = 621355968000000000;
         const TICKS_PER_SECOND: i64 = 10_000_000;
-        
+
         let unix_timestamp = timestamp.timestamp();
         let nanoseconds = timestamp.timestamp_subsec_nanos();
-        
-        let ticks = TICKS_TO_UNIX_EPOCH + (unix_timestamp * TICKS_PER_SECOND) + (nanoseconds as i64 / 100);
-        
+
+        let ticks =
+            TICKS_TO_UNIX_EPOCH + (unix_timestamp * TICKS_PER_SECOND) + (nanoseconds as i64 / 100);
+
         self.pack_long(writer, ticks)?;
         Ok(())
     }
 
-    fn pack_life_bar(&self, writer: &mut impl Write, life_bar_graph: &Option<Vec<LifeBarState>>) -> Result<(), ReplayError> {
+    fn pack_life_bar(
+        &self,
+        writer: &mut impl Write,
+        life_bar_graph: &Option<Vec<LifeBarState>>,
+    ) -> Result<(), ReplayError> {
         match life_bar_graph {
             None => {
                 self.pack_string(writer, None)?;
@@ -119,50 +124,67 @@ impl Packer {
         Ok(())
     }
 
-    fn pack_replay_data(&self, writer: &mut impl Write, replay_data: &[ReplayEvent], rng_seed: Option<i32>) -> Result<(), ReplayError> {
+    fn pack_replay_data(
+        &self,
+        writer: &mut impl Write,
+        replay_data: &[ReplayEvent],
+        rng_seed: Option<i32>,
+    ) -> Result<(), ReplayError> {
         let mut data = String::new();
-        
+
         for event in replay_data {
             match event {
                 ReplayEvent::Osu(event) => {
-                    data.push_str(&format!("{}|{}|{}|{},", 
-                        event.time_delta, event.x, event.y, event.keys.value()));
+                    data.push_str(&format!(
+                        "{}|{}|{}|{},",
+                        event.time_delta,
+                        event.x,
+                        event.y,
+                        event.keys.value()
+                    ));
                 }
                 ReplayEvent::Taiko(event) => {
-                    data.push_str(&format!("{}|{}|0|{},", 
-                        event.time_delta, event.x, event.keys.value()));
+                    data.push_str(&format!(
+                        "{}|{}|0|{},",
+                        event.time_delta,
+                        event.x,
+                        event.keys.value()
+                    ));
                 }
                 ReplayEvent::Catch(event) => {
-                    data.push_str(&format!("{}|{}|0|{},", 
-                        event.time_delta, event.x, if event.dashing { 1 } else { 0 }));
+                    data.push_str(&format!(
+                        "{}|{}|0|{},",
+                        event.time_delta,
+                        event.x,
+                        if event.dashing { 1 } else { 0 }
+                    ));
                 }
                 ReplayEvent::Mania(event) => {
-                    data.push_str(&format!("{}|{}|0|0,", 
-                        event.time_delta, event.keys.value()));
+                    data.push_str(&format!("{}|{}|0|0,", event.time_delta, event.keys.value()));
                 }
             }
         }
-        
+
         if let Some(seed) = rng_seed {
             data.push_str(&format!("-12345|0|0|{},", seed));
         }
-        
+
         // Compress the data
         let data_bytes = data.as_bytes();
         let mut compressed = Vec::new();
         lzma_compress(&mut &data_bytes[..], &mut compressed)
             .map_err(|e| ReplayError::Lzma(format!("{}", e)))?;
-        
+
         // Write length and compressed data
         self.pack_int(writer, compressed.len() as u32)?;
         writer.write_all(&compressed)?;
-        
+
         Ok(())
     }
 
     pub fn pack(&self, replay: &Replay) -> Result<Vec<u8>, ReplayError> {
         let mut buffer = Vec::new();
-        
+
         self.pack_byte(&mut buffer, replay.mode as u8)?;
         self.pack_int(&mut buffer, replay.game_version)?;
         self.pack_string(&mut buffer, Some(&replay.beatmap_hash))?;
@@ -182,7 +204,7 @@ impl Packer {
         self.pack_timestamp(&mut buffer, &replay.timestamp)?;
         self.pack_replay_data(&mut buffer, &replay.replay_data, replay.rng_seed)?;
         self.pack_long(&mut buffer, replay.replay_id)?;
-        
+
         Ok(buffer)
     }
 }

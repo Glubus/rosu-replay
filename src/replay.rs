@@ -1,20 +1,15 @@
+use base64::{engine::general_purpose, Engine as _};
+use chrono::{DateTime, Utc};
+use lzma_rs::lzma_decompress;
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Cursor};
 use std::path::Path;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use base64::{Engine as _, engine::general_purpose};
-use lzma_rs::lzma_decompress;
 
-use crate::{
-    types::*,
-    error::ReplayError,
-    unpacker::Unpacker,
-    packer::Packer,
-};
+use crate::{error::ReplayError, packer::Packer, types::*, unpacker::Unpacker};
 
 /// A replay found in a `.osr` file, or following the osr format.
-/// 
+///
 /// To create a replay, use `Replay::from_path`, `Replay::from_file`, or `Replay::from_bytes`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Replay {
@@ -62,13 +57,13 @@ pub struct Replay {
 
 impl Replay {
     /// Creates a new `Replay` object from the `.osr` file at the given path.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `path` - The path to the osr file to read from
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The parsed replay object
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, ReplayError> {
         let file = File::open(path)?;
@@ -77,13 +72,13 @@ impl Replay {
     }
 
     /// Creates a new `Replay` object from a reader.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `reader` - The reader to read from
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The parsed replay object
     pub fn from_reader<R: std::io::Read>(reader: R) -> Result<Self, ReplayError> {
         let unpacker = Unpacker::new(reader);
@@ -91,13 +86,13 @@ impl Replay {
     }
 
     /// Creates a new `Replay` object from a byte slice containing `.osr` data.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `data` - The data to parse
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The parsed replay object
     pub fn from_bytes(data: &[u8]) -> Result<Self, ReplayError> {
         let cursor = Cursor::new(data);
@@ -105,13 +100,13 @@ impl Replay {
     }
 
     /// Writes the replay to the given path.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `path` - The path to where to write the replay
-    /// 
+    ///
     /// # Notes
-    /// 
+    ///
     /// This uses the current values of any attributes, and so can be used to
     /// create an edited version of a replay, by first reading a replay, editing
     /// an attribute, then writing the replay back to its file.
@@ -122,9 +117,9 @@ impl Replay {
     }
 
     /// Writes the replay to a writer.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `writer` - The writer to write to
     pub fn write_to<W: std::io::Write>(&self, mut writer: W) -> Result<(), ReplayError> {
         let packed = self.pack()?;
@@ -133,12 +128,12 @@ impl Replay {
     }
 
     /// Returns the bytes representing this `Replay`, in `.osr` format.
-    /// 
+    ///
     /// The bytes returned by this method are suitable for writing to a file as a
     /// valid `.osr` file.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The bytes representing this `Replay`, in `.osr` format
     pub fn pack(&self) -> Result<Vec<u8>, ReplayError> {
         let packer = Packer::new();
@@ -146,13 +141,13 @@ impl Replay {
     }
 
     /// Returns the bytes representing this `Replay`, in `.osr` format, with custom packer settings.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `packer` - The packer to use for compression settings
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The bytes representing this `Replay`, in `.osr` format
     pub fn pack_with(&self, packer: &Packer) -> Result<Vec<u8>, ReplayError> {
         packer.pack(self)
@@ -160,19 +155,19 @@ impl Replay {
 }
 
 /// Parses the replay data portion of a replay from a string.
-/// 
+///
 /// This method is suitable for use with the replay data returned by API v1's
 /// `/get_replay` endpoint, for instance.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `data_string` - The replay data to parse
 /// * `decoded` - Whether `data_string` has already been decoded from a base64 representation
 /// * `decompressed` - Whether `data_string` has already been decompressed from lzma and decoded to ascii
 /// * `mode` - What mode to parse the replay data as
-/// 
+///
 /// # Returns
-/// 
+///
 /// The parsed replay events
 pub fn parse_replay_data(
     data_string: &[u8],
@@ -181,7 +176,8 @@ pub fn parse_replay_data(
     mode: GameMode,
 ) -> Result<Vec<ReplayEvent>, ReplayError> {
     let data = if !decoded && !decompressed {
-        general_purpose::STANDARD.decode(data_string)
+        general_purpose::STANDARD
+            .decode(data_string)
             .map_err(|e| ReplayError::Parse(format!("Base64 decode error: {}", e)))?
     } else {
         data_string.to_vec()
@@ -198,6 +194,6 @@ pub fn parse_replay_data(
 
     let data_string = String::from_utf8(decompressed_data)?;
     let (replay_data, _) = Unpacker::<Cursor<&[u8]>>::parse_replay_data(&data_string, mode)?;
-    
+
     Ok(replay_data)
 }

@@ -1,0 +1,17 @@
+name: CI
+
+on:
+  release:
+    types: ["published"]
+  push:
+    branches: ["master", "main"]
+  pull_request:
+    types: [opened, reopened, edited, synchronize]
+    paths-ignore:
+      - '*.md'
+      - 'assets/**'
+      - 'examples/**'
+
+jobs:
+  check:
+    uses: ./.github/workflows/check.yml

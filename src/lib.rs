@@ -77,15 +77,15 @@
 //!
 //! See the `examples/` directory for more comprehensive usage examples.
 
-pub mod types;
-pub mod unpacker;
+pub mod error;
 pub mod packer;
 pub mod replay;
-pub mod error;
+pub mod types;
+pub mod unpacker;
 
 pub use error::ReplayError;
-pub use types::*;
 pub use replay::Replay;
+pub use types::*;
 
 /// Parse replay data from a string (for API usage)
 pub fn parse_replay_data(

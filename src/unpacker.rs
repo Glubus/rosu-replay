@@ -1,12 +1,8 @@
-use std::io::Read;
+use crate::{error::ReplayError, replay::Replay, types::*};
 use byteorder::{LittleEndian, ReadBytesExt};
-use chrono::{DateTime, Utc, TimeZone};
+use chrono::{DateTime, TimeZone, Utc};
 use lzma_rs::lzma_decompress;
-use crate::{
-    types::*,
-    error::ReplayError,
-    replay::Replay,
-};
+use std::io::Read;
 
 /// Helper struct for unpacking .osr format data
 pub struct Unpacker<R: Read> {
@@ -37,27 +33,27 @@ impl<R: Read> Unpacker<R> {
     fn read_uleb128(&mut self) -> Result<usize, ReplayError> {
         let mut result = 0;
         let mut shift = 0;
-        
+
         loop {
             let byte = self.reader.read_u8()?;
             result |= ((byte & 0b01111111) as usize) << shift;
-            
+
             if (byte & 0b10000000) == 0x00 {
                 break;
             }
-            
+
             shift += 7;
             if shift >= 64 {
                 return Err(ReplayError::InvalidFormat("ULEB128 too long".to_string()));
             }
         }
-        
+
         Ok(result)
     }
 
     pub fn unpack_string(&mut self) -> Result<Option<String>, ReplayError> {
         let indicator = self.reader.read_u8()?;
-        
+
         match indicator {
             0x00 => Ok(None),
             0x0b => {
@@ -73,64 +69,73 @@ impl<R: Read> Unpacker<R> {
 
     pub fn unpack_timestamp(&mut self) -> Result<DateTime<Utc>, ReplayError> {
         let ticks = self.unpack_long()?;
-        
+
         // Windows ticks start from year 1 AD, Unix epoch starts from 1970
         // There are 621355968000000000 ticks between year 1 and Unix epoch
         const TICKS_TO_UNIX_EPOCH: i64 = 621355968000000000;
         const TICKS_PER_SECOND: i64 = 10_000_000;
-        
+
         let unix_seconds = (ticks - TICKS_TO_UNIX_EPOCH) / TICKS_PER_SECOND;
         let nanoseconds = ((ticks - TICKS_TO_UNIX_EPOCH) % TICKS_PER_SECOND) * 100;
-        
-        Ok(Utc.timestamp_opt(unix_seconds, nanoseconds as u32)
+
+        Ok(Utc
+            .timestamp_opt(unix_seconds, nanoseconds as u32)
             .single()
-            .unwrap_or_else(|| Utc::now()))
+            .unwrap_or_else(Utc::now))
     }
 
-    pub fn unpack_play_data(&mut self, mode: GameMode) -> Result<(Vec<ReplayEvent>, Option<i32>), ReplayError> {
+    pub fn unpack_play_data(
+        &mut self,
+        mode: GameMode,
+    ) -> Result<(Vec<ReplayEvent>, Option<i32>), ReplayError> {
         let replay_length = self.unpack_int()? as usize;
         let mut compressed_data = vec![0u8; replay_length];
         self.reader.read_exact(&mut compressed_data)?;
-        
+
         let mut decompressed_data = Vec::new();
         lzma_decompress(&mut &compressed_data[..], &mut decompressed_data)
             .map_err(|e| ReplayError::Lzma(format!("{}", e)))?;
         let data_str = String::from_utf8(decompressed_data)?;
-        
+
         Self::parse_replay_data(&data_str, mode)
     }
 
-    pub fn parse_replay_data(replay_data_str: &str, mode: GameMode) -> Result<(Vec<ReplayEvent>, Option<i32>), ReplayError> {
+    pub fn parse_replay_data(
+        replay_data_str: &str,
+        mode: GameMode,
+    ) -> Result<(Vec<ReplayEvent>, Option<i32>), ReplayError> {
         // Remove trailing comma if it exists
         let replay_data_str = replay_data_str.trim_end_matches(',');
-        
+
         if replay_data_str.is_empty() {
             return Ok((Vec::new(), None));
         }
-        
+
         let events: Vec<&str> = replay_data_str.split(',').collect();
         let mut play_data = Vec::new();
         let mut rng_seed = None;
-        
+
         for (i, event_str) in events.iter().enumerate() {
             let parts: Vec<&str> = event_str.split('|').collect();
             if parts.len() != 4 {
                 continue;
             }
-            
-            let time_delta = parts[0].parse::<i32>()
+
+            let time_delta = parts[0]
+                .parse::<i32>()
                 .map_err(|e| ReplayError::Parse(format!("Invalid time_delta: {}", e)))?;
             let x_str = parts[1];
             let y_str = parts[2];
-            let keys = parts[3].parse::<u32>()
+            let keys = parts[3]
+                .parse::<u32>()
                 .map_err(|e| ReplayError::Parse(format!("Invalid keys: {}", e)))?;
-            
+
             // Check for RNG seed (last event with special time_delta)
             if time_delta == -12345 && i == events.len() - 1 {
                 rng_seed = Some(keys as i32);
                 continue;
             }
-            
+
             // Skip lazer frames with x=256, y=-500 in first two events
             if i < 2 {
                 if let (Ok(x), Ok(y)) = (x_str.parse::<f32>(), y_str.parse::<f32>()) {
@@ -139,12 +144,14 @@ impl<R: Read> Unpacker<R> {
                     }
                 }
             }
-            
+
             let event = match mode {
                 GameMode::Std => {
-                    let x = x_str.parse::<f32>()
+                    let x = x_str
+                        .parse::<f32>()
                         .map_err(|e| ReplayError::Parse(format!("Invalid x coordinate: {}", e)))?;
-                    let y = y_str.parse::<f32>()
+                    let y = y_str
+                        .parse::<f32>()
                         .map_err(|e| ReplayError::Parse(format!("Invalid y coordinate: {}", e)))?;
                     ReplayEvent::Osu(ReplayEventOsu {
                         time_delta,
@@ -154,7 +161,8 @@ impl<R: Read> Unpacker<R> {
                     })
                 }
                 GameMode::Taiko => {
-                    let x = x_str.parse::<i32>()
+                    let x = x_str
+                        .parse::<i32>()
                         .map_err(|e| ReplayError::Parse(format!("Invalid x coordinate: {}", e)))?;
                     ReplayEvent::Taiko(ReplayEventTaiko {
                         time_delta,
@@ -163,7 +171,8 @@ impl<R: Read> Unpacker<R> {
                     })
                 }
                 GameMode::Catch => {
-                    let x = x_str.parse::<f32>()
+                    let x = x_str
+                        .parse::<f32>()
                         .map_err(|e| ReplayError::Parse(format!("Invalid x coordinate: {}", e)))?;
                     ReplayEvent::Catch(ReplayEventCatch {
                         time_delta,
@@ -172,7 +181,8 @@ impl<R: Read> Unpacker<R> {
                     })
                 }
                 GameMode::Mania => {
-                    let keys_value = x_str.parse::<u32>()
+                    let keys_value = x_str
+                        .parse::<u32>()
                         .map_err(|e| ReplayError::Parse(format!("Invalid keys: {}", e)))?;
                     ReplayEvent::Mania(ReplayEventMania {
                         time_delta,
@@ -180,10 +190,10 @@ impl<R: Read> Unpacker<R> {
                     })
                 }
             };
-            
+
             play_data.push(event);
         }
-        
+
         Ok((play_data, rng_seed))
     }
 
@@ -200,7 +210,7 @@ impl<R: Read> Unpacker<R> {
 
     pub fn unpack_life_bar(&mut self) -> Result<Option<Vec<LifeBarState>>, ReplayError> {
         let life_bar_string = self.unpack_string()?;
-        
+
         match life_bar_string {
             None => Ok(None),
             Some(ref s) if s.is_empty() => Ok(None),
@@ -211,18 +221,22 @@ impl<R: Read> Unpacker<R> {
                     .map(|state_str| {
                         let parts: Vec<&str> = state_str.split('|').collect();
                         if parts.len() != 2 {
-                            return Err(ReplayError::Parse("Invalid life bar state format".to_string()));
+                            return Err(ReplayError::Parse(
+                                "Invalid life bar state format".to_string(),
+                            ));
                         }
-                        
-                        let time = parts[0].parse::<i32>()
+
+                        let time = parts[0]
+                            .parse::<i32>()
                             .map_err(|e| ReplayError::Parse(format!("Invalid time: {}", e)))?;
-                        let life = parts[1].parse::<f32>()
+                        let life = parts[1]
+                            .parse::<f32>()
                             .map_err(|e| ReplayError::Parse(format!("Invalid life: {}", e)))?;
-                        
+
                         Ok(LifeBarState { time, life })
                     })
                     .collect();
-                
+
                 Ok(Some(states?))
             }
         }

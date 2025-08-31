@@ -5,7 +5,6 @@
 
 use serde::{Deserialize, Serialize};
 
-
 /// Represents the different game modes in osu!
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GameMode {
@@ -32,14 +31,14 @@ impl From<u8> for GameMode {
 }
 
 /// Represents osu! mods as a bitflag integer.
-/// 
+///
 /// Mods can be combined using bitwise OR operations.
-/// 
+///
 /// # Example
-/// 
+///
 /// ```rust
 /// use rosu_replay::Mod;
-/// 
+///
 /// let hidden_hard_rock = Mod::HIDDEN.0 | Mod::HARD_ROCK.0;
 /// let combined_mod = Mod(hidden_hard_rock);
 /// assert!(combined_mod.contains(Mod::HIDDEN));
@@ -179,7 +178,7 @@ impl From<u32> for KeyMania {
 }
 
 /// A single event (frame) in a replay, specific to the game mode.
-/// 
+///
 /// Each variant contains mode-specific information about what happened
 /// at a particular time during the replay.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -230,7 +229,7 @@ pub struct ReplayEventMania {
 }
 
 /// Represents the life bar state at a specific point in time during a replay.
-/// 
+///
 /// The life bar shows the player's health throughout the song,
 /// typically ranging from 0.0 (empty) to 1.0 (full).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

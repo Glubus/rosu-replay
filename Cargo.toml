@@ -1,17 +1,20 @@
  
- 
  [package]
 name = "rosu-replay"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Glubus"]
 description = "A Rust library for parsing and writing osu! replay files (.osr format), ported from the Python osrparse library"
 license = "MIT"
-repository = "https://github.com/yourusername/rosu-replay"
+repository = "https://github.com/Glubus/rosu-replay"
 documentation = "https://docs.rs/rosu-replay"
 keywords = ["osu", "replay", "parser", "gaming", "rhythm"]
 categories = ["parser-implementations", "games", "multimedia"]
 readme = "README.md"
+
+[lib]
+name = "rosu_replay"
+path = "src/lib.rs"
 
 [dependencies]
 base64 = "0.22.1"
