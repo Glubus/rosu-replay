@@ -145,7 +145,7 @@ fn test_game_mode_events() {
 /// Test life bar data
 #[test]
 fn test_life_bar_data() {
-    let life_states = [
+     let life_states = [
         LifeBarState { time: 0, life: 1.0 },
         LifeBarState {
             time: 1000,
