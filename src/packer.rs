@@ -182,6 +182,59 @@ impl Packer {
         Ok(())
     }
 
+    fn pack_replay_data_uncompressed(
+        &self,
+        writer: &mut impl Write,
+        replay_data: &[ReplayEvent],
+        rng_seed: Option<i32>,
+    ) -> Result<(), ReplayError> {
+        let mut data = String::new();
+
+        for event in replay_data {
+            match event {
+                ReplayEvent::Osu(event) => {
+                    data.push_str(&format!(
+                        "{}|{}|{}|{},",
+                        event.time_delta,
+                        event.x,
+                        event.y,
+                        event.keys.value()
+                    ));
+                }
+                ReplayEvent::Taiko(event) => {
+                    data.push_str(&format!(
+                        "{}|{}|0|{},",
+                        event.time_delta,
+                        event.x,
+                        event.keys.value()
+                    ));
+                }
+                ReplayEvent::Catch(event) => {
+                    data.push_str(&format!(
+                        "{}|{}|0|{},",
+                        event.time_delta,
+                        event.x,
+                        if event.dashing { 1 } else { 0 }
+                    ));
+                }
+                ReplayEvent::Mania(event) => {
+                    data.push_str(&format!("{}|{}|0|0,", event.time_delta, event.keys.value()));
+                }
+            }
+        }
+
+        if let Some(seed) = rng_seed {
+            data.push_str(&format!("-12345|0|0|{},", seed));
+        }
+
+        // Write length and uncompressed data
+        let data_bytes = data.as_bytes();
+        self.pack_int(writer, data_bytes.len() as u32)?;
+        writer.write_all(data_bytes)?;
+
+        Ok(())
+    }
+
     pub fn pack(&self, replay: &Replay) -> Result<Vec<u8>, ReplayError> {
         let mut buffer = Vec::new();
 
@@ -203,6 +256,45 @@ impl Packer {
         self.pack_life_bar(&mut buffer, &replay.life_bar_graph)?;
         self.pack_timestamp(&mut buffer, &replay.timestamp)?;
         self.pack_replay_data(&mut buffer, &replay.replay_data, replay.rng_seed)?;
+        self.pack_long(&mut buffer, replay.replay_id)?;
+
+        Ok(buffer)
+    }
+
+    /// Packs a replay without LZMA compression on the replay data.
+    ///
+    /// This method is similar to `pack` but saves the replay data in uncompressed format,
+    /// which can be useful for debugging or when you need faster processing at the cost
+    /// of larger file size.
+    ///
+    /// # Arguments
+    ///
+    /// * `replay` - The replay to pack
+    ///
+    /// # Returns
+    ///
+    /// The bytes representing this `Replay` in `.osr` format without LZMA compression
+    pub fn pack_uncompressed(&self, replay: &Replay) -> Result<Vec<u8>, ReplayError> {
+        let mut buffer = Vec::new();
+
+        self.pack_byte(&mut buffer, replay.mode as u8)?;
+        self.pack_int(&mut buffer, replay.game_version)?;
+        self.pack_string(&mut buffer, Some(&replay.beatmap_hash))?;
+        self.pack_string(&mut buffer, Some(&replay.username))?;
+        self.pack_string(&mut buffer, Some(&replay.replay_hash))?;
+        self.pack_short(&mut buffer, replay.count_300)?;
+        self.pack_short(&mut buffer, replay.count_100)?;
+        self.pack_short(&mut buffer, replay.count_50)?;
+        self.pack_short(&mut buffer, replay.count_geki)?;
+        self.pack_short(&mut buffer, replay.count_katu)?;
+        self.pack_short(&mut buffer, replay.count_miss)?;
+        self.pack_int(&mut buffer, replay.score)?;
+        self.pack_short(&mut buffer, replay.max_combo)?;
+        self.pack_byte(&mut buffer, if replay.perfect { 1 } else { 0 })?;
+        self.pack_int(&mut buffer, replay.mods.value())?;
+        self.pack_life_bar(&mut buffer, &replay.life_bar_graph)?;
+        self.pack_timestamp(&mut buffer, &replay.timestamp)?;
+        self.pack_replay_data_uncompressed(&mut buffer, &replay.replay_data, replay.rng_seed)?;
         self.pack_long(&mut buffer, replay.replay_id)?;
 
         Ok(buffer)

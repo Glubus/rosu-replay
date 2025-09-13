@@ -152,6 +152,33 @@ impl Replay {
     pub fn pack_with(&self, packer: &Packer) -> Result<Vec<u8>, ReplayError> {
         packer.pack(self)
     }
+
+    /// Returns the bytes representing this `Replay`, in `.osr` format, without LZMA compression.
+    ///
+    /// This method is similar to `pack` but saves the replay data in uncompressed format,
+    /// which can be useful for debugging or when you need faster processing at the cost
+    /// of larger file size.
+    ///
+    /// # Returns
+    ///
+    /// The bytes representing this `Replay`, in `.osr` format without LZMA compression
+    pub fn pack_uncompressed(&self) -> Result<Vec<u8>, ReplayError> {
+        let packer = Packer::new();
+        packer.pack_uncompressed(self)
+    }
+
+    /// Returns the bytes representing this `Replay`, in `.osr` format, without LZMA compression, with custom packer settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `packer` - The packer to use for compression settings
+    ///
+    /// # Returns
+    ///
+    /// The bytes representing this `Replay`, in `.osr` format without LZMA compression
+    pub fn pack_uncompressed_with(&self, packer: &Packer) -> Result<Vec<u8>, ReplayError> {
+        packer.pack_uncompressed(self)
+    }
 }
 
 /// Parses the replay data portion of a replay from a string.

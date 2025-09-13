@@ -1,4 +1,4 @@
-use rosu_replay::{GameMode, Key, KeyMania, KeyTaiko, LifeBarState, Mod, Replay, ReplayEvent};
+use rosu_replay::{GameMode, Key, KeyMania, KeyTaiko, LifeBarState, Mod, Packer, Replay, ReplayEvent};
 
 /// Test parsing basic replay data structures
 #[test]
@@ -279,4 +279,69 @@ fn create_mania_event() -> ReplayEvent {
         time_delta: 25,
         keys: KeyMania(KeyMania::K1.value() | KeyMania::K3.value()),
     })
+}
+
+#[test]
+fn test_uncompressed_packing() {
+    // Create a simple replay
+    let replay = create_test_replay();
+    
+    // Pack with normal compression
+    let compressed_data = replay.pack().expect("Failed to pack replay");
+    
+    // Pack without LZMA compression
+    let uncompressed_data = replay.pack_uncompressed().expect("Failed to pack replay uncompressed");
+    
+    // Debug information
+    println!("Compressed size: {} bytes", compressed_data.len());
+    println!("Uncompressed size: {} bytes", uncompressed_data.len());
+    
+    // For very small replays, the overhead of LZMA compression might make compressed larger
+    // So we just check that both are valid and readable
+    assert!(compressed_data.len() > 0);
+    assert!(uncompressed_data.len() > 0);
+    
+    // Both should be readable
+    let compressed_replay = Replay::from_bytes(&compressed_data).expect("Failed to read compressed replay");
+    let uncompressed_replay = Replay::from_bytes(&uncompressed_data).expect("Failed to read uncompressed replay");
+    
+    // Both should have the same content
+    assert_eq!(compressed_replay.username, uncompressed_replay.username);
+    assert_eq!(compressed_replay.score, uncompressed_replay.score);
+    assert_eq!(compressed_replay.replay_data.len(), uncompressed_replay.replay_data.len());
+    assert_eq!(compressed_replay.mode, uncompressed_replay.mode);
+}
+
+#[test]
+fn test_uncompressed_packing_with_custom_packer() {
+    // Create a simple replay
+    let replay = create_test_replay();
+    
+    // Create a custom packer
+    let packer = Packer::new().with_preset(9); // Maximum compression for comparison
+    
+    // Pack with custom packer (compressed)
+    let compressed_data = packer.pack(&replay).expect("Failed to pack replay");
+    
+    // Pack with custom packer (uncompressed)
+    let uncompressed_data = packer.pack_uncompressed(&replay).expect("Failed to pack replay uncompressed");
+    
+    // Debug information
+    println!("Custom packer compressed size: {} bytes", compressed_data.len());
+    println!("Custom packer uncompressed size: {} bytes", uncompressed_data.len());
+    
+    // For very small replays, the overhead of LZMA compression might make compressed larger
+    // So we just check that both are valid and readable
+    assert!(compressed_data.len() > 0);
+    assert!(uncompressed_data.len() > 0);
+    
+    // Both should be readable
+    let compressed_replay = Replay::from_bytes(&compressed_data).expect("Failed to read compressed replay");
+    let uncompressed_replay = Replay::from_bytes(&uncompressed_data).expect("Failed to read uncompressed replay");
+    
+    // Both should have the same content
+    assert_eq!(compressed_replay.username, uncompressed_replay.username);
+    assert_eq!(compressed_replay.score, uncompressed_replay.score);
+    assert_eq!(compressed_replay.replay_data.len(), uncompressed_replay.replay_data.len());
+    assert_eq!(compressed_replay.mode, uncompressed_replay.mode);
 }

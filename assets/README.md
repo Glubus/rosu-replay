@@ -1,4 +1,4 @@
-# Assets Directory
+now # Assets Directory
 
 This directory should contain test replay files for the examples.
 

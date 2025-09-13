@@ -84,6 +84,7 @@ pub mod types;
 pub mod unpacker;
 
 pub use error::ReplayError;
+pub use packer::Packer;
 pub use replay::Replay;
 pub use types::*;
 
