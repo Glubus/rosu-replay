@@ -83,6 +83,9 @@ pub mod replay;
 pub mod types;
 pub mod unpacker;
 
+#[cfg(feature = "wasm")]
+pub mod wasm;
+
 pub use error::ReplayError;
 pub use packer::Packer;
 pub use replay::Replay;

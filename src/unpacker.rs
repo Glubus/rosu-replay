@@ -1,7 +1,7 @@
 use crate::{error::ReplayError, replay::Replay, types::*};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{DateTime, TimeZone, Utc};
-use lzma_rs::lzma_decompress;
+use liblzma::decode_all;
 use std::io::Read;
 
 /// Helper struct for unpacking .osr format data
@@ -93,9 +93,8 @@ impl<R: Read> Unpacker<R> {
         self.reader.read_exact(&mut data)?;
 
         // Try to decompress with LZMA first
-        let mut decompressed_data = Vec::new();
-        match lzma_decompress(&mut &data[..], &mut decompressed_data) {
-            Ok(_) => {
+        match decode_all(&data[..]) {
+            Ok(decompressed_data) => {
                 // Successfully decompressed, data was compressed
                 let data_str = String::from_utf8(decompressed_data)?;
                 Self::parse_replay_data(&data_str, mode)

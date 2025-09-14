@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
-use lzma_rs::lzma_decompress;
+use liblzma::decode_all;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Cursor};
@@ -211,10 +211,8 @@ pub fn parse_replay_data(
     };
 
     let decompressed_data = if !decompressed {
-        let mut output = Vec::new();
-        lzma_decompress(&mut &data[..], &mut output)
-            .map_err(|e| ReplayError::Lzma(format!("{}", e)))?;
-        output
+        decode_all(&data[..])
+            .map_err(|e| ReplayError::Lzma(format!("{}", e)))?
     } else {
         data
     };

@@ -1,5 +1,6 @@
 use base64::{engine::general_purpose, Engine as _};
 use rosu_replay::{parse_replay_data, GameMode};
+use liblzma::encode_all;
 
 /// Test parsing replay data from base64 encoded format (like from osu! API)
 #[test]
@@ -8,10 +9,7 @@ fn test_parse_api_base64_data() -> Result<(), Box<dyn std::error::Error>> {
     let replay_data = "16|256.0|192.0|1,32|300.0|200.0|2,48|400.0|250.0|0";
 
     // Compress and encode like the API would
-    lzma_rs::lzma_compress(&mut replay_data.as_bytes(), &mut Vec::new())
-        .map_err(|e| format!("Compression failed: {}", e))?;
-    let mut compressed_data = Vec::new();
-    lzma_rs::lzma_compress(&mut replay_data.as_bytes(), &mut compressed_data)
+    let compressed_data = encode_all(replay_data.as_bytes(), 6)
         .map_err(|e| format!("Compression failed: {}", e))?;
 
     let base64_data = general_purpose::STANDARD.encode(&compressed_data);
@@ -28,8 +26,7 @@ fn test_parse_api_base64_data() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_parse_decoded_data() -> Result<(), Box<dyn std::error::Error>> {
     let replay_data = "16|256.0|192.0|1,32|300.0|200.0|2";
-    let mut compressed_data = Vec::new();
-    lzma_rs::lzma_compress(&mut replay_data.as_bytes(), &mut compressed_data)
+    let compressed_data = encode_all(replay_data.as_bytes(), 6)
         .map_err(|e| format!("Compression failed: {}", e))?;
 
     // Parse with decoded=true (skip base64 decoding)

@@ -1,6 +1,6 @@
 use crate::{error::ReplayError, replay::Replay, types::*};
 use byteorder::{LittleEndian, WriteBytesExt};
-use lzma_rs::lzma_compress;
+use liblzma::encode_all;
 use std::io::Write;
 
 /// Helper struct for packing data into .osr format
@@ -171,8 +171,7 @@ impl Packer {
 
         // Compress the data
         let data_bytes = data.as_bytes();
-        let mut compressed = Vec::new();
-        lzma_compress(&mut &data_bytes[..], &mut compressed)
+        let compressed = encode_all(data_bytes, 6)
             .map_err(|e| ReplayError::Lzma(format!("{}", e)))?;
 
         // Write length and compressed data
