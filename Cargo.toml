@@ -26,7 +26,7 @@ base64 = "0.22.1"
 byteorder = "1.5.0"
 chrono = { version = "0.4.41", features = ["serde"] }
 liblzma = "0.4.4"
-serde = { version = "1.0.219", features = ["derive"] }
+serde = { version = "1.0.226", features = ["derive"] }
 thiserror = "2.0.16"
 
 # WASM dependencies (optional)
