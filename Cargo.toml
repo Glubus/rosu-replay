@@ -27,7 +27,7 @@ byteorder = "1.5.0"
 chrono = { version = "0.4.41", features = ["serde"] }
 liblzma = "0.4.4"
 serde = { version = "1.0.219", features = ["derive"] }
-thiserror = "2.0.16"
+thiserror = "2.0.17"
 
 # WASM dependencies (optional)
 wasm-bindgen = { version = "0.2", optional = true }
