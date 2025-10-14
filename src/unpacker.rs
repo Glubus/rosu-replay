@@ -1,7 +1,7 @@
 use crate::{error::ReplayError, replay::Replay, types::*};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{DateTime, TimeZone, Utc};
-use liblzma::decode_all;
+use liblzma::read;
 use std::io::Read;
 
 /// Helper struct for unpacking .osr format data
@@ -89,22 +89,17 @@ impl<R: Read> Unpacker<R> {
         mode: GameMode,
     ) -> Result<(Vec<ReplayEvent>, Option<i32>), ReplayError> {
         let replay_length = self.unpack_int()? as usize;
-        let mut data = vec![0u8; replay_length];
-        self.reader.read_exact(&mut data)?;
+        let mut compressed_data = vec![0u8; replay_length];
+        self.reader.read_exact(&mut compressed_data)?;
 
-        // Try to decompress with LZMA first
-        match decode_all(&data[..]) {
-            Ok(decompressed_data) => {
-                // Successfully decompressed, data was compressed
-                let data_str = String::from_utf8(decompressed_data)?;
-                Self::parse_replay_data(&data_str, mode)
-            }
-            Err(_) => {
-                // LZMA decompression failed, assume data is uncompressed
-                let data_str = String::from_utf8(data)?;
-                Self::parse_replay_data(&data_str, mode)
-            }
-        }
+        let mut buffer = Vec::new();
+
+
+        read::XzDecoder::new_multi_decoder(compressed_data.as_slice())
+            .read_to_end(&mut buffer)?;
+
+        let data_str = String::from_utf8(buffer)?;
+        Self::parse_replay_data(&data_str, mode)
     }
 
     pub fn parse_replay_data(
