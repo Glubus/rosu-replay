@@ -212,7 +212,7 @@ pub fn parse_replay_data(
 
     let decompressed_data = if !decompressed {
         decode_all(&data[..])
-            .map_err(|e| ReplayError::Lzma(format!("{}", e)))?
+            .map_err(|e| ReplayError::LzmaCustom(format!("{}", e)))?
     } else {
         data
     };

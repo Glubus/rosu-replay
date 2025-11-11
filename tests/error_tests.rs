@@ -92,7 +92,7 @@ fn test_lzma_error() {
 
     // The error could be either LZMA or IO (UnexpectedEof) depending on how the unpacker fails
     match result {
-        Err(ReplayError::Lzma(_)) | Err(ReplayError::Io(_)) => {
+        Err(ReplayError::LzmaCustom(_)) | Err(ReplayError::Io(_)) => {
             // Both are acceptable error types for invalid compressed data
         }
         _ => panic!("Expected LZMA or IO error, got: {:?}", result),
@@ -149,7 +149,7 @@ fn test_error_display() {
     let error_message = format!("{}", replay_error);
     assert!(error_message.contains("IO error"));
 
-    let lzma_error = ReplayError::Lzma("Decompression failed".to_string());
+    let lzma_error = ReplayError::LzmaCustom("Decompression failed".to_string());
     let error_message = format!("{}", lzma_error);
     assert!(error_message.contains("LZMA decompression error"));
 
