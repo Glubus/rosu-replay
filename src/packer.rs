@@ -172,10 +172,8 @@ impl Packer {
         // Compress the data
         let data_bytes = data.as_bytes();
         let mut compressed = Vec::with_capacity(data_bytes.len());
-        
-        let lzma_stream = liblzma::stream::Stream::new_lzma_encoder(
-            &LzmaOptions::new_preset(6)?
-        )?;
+
+        let lzma_stream = liblzma::stream::Stream::new_lzma_encoder(&LzmaOptions::new_preset(6)?)?;
 
         let mut encoder = XzEncoder::new_stream(&mut compressed, lzma_stream);
 

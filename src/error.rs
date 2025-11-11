@@ -27,5 +27,5 @@ pub enum ReplayError {
     InvalidStringByte(u8),
 
     #[error("LZMA decompression error: {0}")]
-    Lzma(#[from] liblzma::stream::Error)
+    Lzma(#[from] liblzma::stream::Error),
 }

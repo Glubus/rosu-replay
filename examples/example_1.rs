@@ -163,25 +163,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match replay.pack_uncompressed() {
                 Ok(uncompressed_data) => {
                     std::fs::write(uncompressed_path, &uncompressed_data)?;
-                    println!("Successfully wrote uncompressed replay to: {}", uncompressed_path);
-                    
+                    println!(
+                        "Successfully wrote uncompressed replay to: {}",
+                        uncompressed_path
+                    );
+
                     // Compare file sizes
                     let compressed_size = std::fs::metadata(output_path)?.len();
                     let uncompressed_size = std::fs::metadata(uncompressed_path)?.len();
-                    
+
                     println!("Compressed file size: {} bytes", compressed_size);
                     println!("Uncompressed file size: {} bytes", uncompressed_size);
-                    println!("Size difference: {} bytes ({}%)", 
+                    println!(
+                        "Size difference: {} bytes ({}%)",
                         uncompressed_size as i64 - compressed_size as i64,
-                        ((uncompressed_size as f64 - compressed_size as f64) / compressed_size as f64 * 100.0) as i32
+                        ((uncompressed_size as f64 - compressed_size as f64)
+                            / compressed_size as f64
+                            * 100.0) as i32
                     );
 
                     // Verify uncompressed replay can be read back
                     match Replay::from_path(uncompressed_path) {
                         Ok(replay_uncompressed) => {
                             println!("Successfully verified uncompressed replay!");
-                            println!("Scores match: {}", replay.score == replay_uncompressed.score);
-                            println!("Event counts match: {}", replay.replay_data.len() == replay_uncompressed.replay_data.len());
+                            println!(
+                                "Scores match: {}",
+                                replay.score == replay_uncompressed.score
+                            );
+                            println!(
+                                "Event counts match: {}",
+                                replay.replay_data.len() == replay_uncompressed.replay_data.len()
+                            );
                         }
                         Err(e) => {
                             eprintln!("Error reading back uncompressed replay: {}", e);

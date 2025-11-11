@@ -1,7 +1,7 @@
  
  [package]
 name = "rosu-replay"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 authors = ["Glubus"]
 description = "A Rust library for parsing and writing osu! replay files (.osr format), ported from the Python osrparse library"

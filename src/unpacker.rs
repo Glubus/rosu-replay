@@ -94,8 +94,7 @@ impl<R: Read> Unpacker<R> {
 
         let mut buffer = Vec::new();
 
-        read::XzDecoder::new_multi_decoder(compressed_data.as_slice())
-            .read_to_end(&mut buffer)?;
+        read::XzDecoder::new_multi_decoder(compressed_data.as_slice()).read_to_end(&mut buffer)?;
 
         let data_str = String::from_utf8(buffer)?;
         Self::parse_replay_data(&data_str, mode)
