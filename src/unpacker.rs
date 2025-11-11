@@ -94,7 +94,6 @@ impl<R: Read> Unpacker<R> {
 
         let mut buffer = Vec::new();
 
-
         read::XzDecoder::new_multi_decoder(compressed_data.as_slice())
             .read_to_end(&mut buffer)?;
 

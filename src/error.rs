@@ -9,7 +9,7 @@ pub enum ReplayError {
     Io(#[from] std::io::Error),
 
     #[error("LZMA decompression error: {0}")]
-    Lzma(String),
+    LzmaCustom(String),
 
     #[error("UTF-8 conversion error: {0}")]
     Utf8(#[from] std::string::FromUtf8Error),
@@ -25,4 +25,7 @@ pub enum ReplayError {
 
     #[error("Invalid string byte: expected 0x00 or 0x0b, got {0:#x}")]
     InvalidStringByte(u8),
+
+    #[error("LZMA decompression error: {0}")]
+    Lzma(#[from] liblzma::stream::Error)
 }

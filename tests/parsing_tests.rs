@@ -1,5 +1,5 @@
 use rosu_replay::unpacker::Unpacker;
-use rosu_replay::{GameMode, Replay, ReplayEvent};
+use rosu_replay::{GameMode, ReplayEvent};
 use std::io::Cursor;
 
 /// Test parsing replay data from string format
