@@ -136,15 +136,6 @@ impl<R: Read> Unpacker<R> {
                 continue;
             }
 
-            // Skip lazer frames with x=256, y=-500 in first two events
-            if i < 2 {
-                if let (Ok(x), Ok(y)) = (x_str.parse::<f32>(), y_str.parse::<f32>()) {
-                    if x == 256.0 && y == -500.0 {
-                        continue;
-                    }
-                }
-            }
-
             let event = match mode {
                 GameMode::Std => {
                     let x = x_str
