@@ -188,14 +188,21 @@ impl<R: Read> Unpacker<R> {
         Ok((play_data, rng_seed))
     }
 
-    pub fn unpack_replay_id(&mut self) -> Result<i64, ReplayError> {
-        // Try to read as long first, fallback to int for old replays
-        match self.unpack_long() {
-            Ok(id) => Ok(id),
-            Err(_) => {
-                // Reset and try as int
-                Ok(self.unpack_int()? as i64)
-            }
+    pub fn unpack_replay_id(&mut self, game_version: u32) -> Result<i64, ReplayError> {
+        // https://github.com/ppy/osu/blob/48c4800e3ae4ee752452cdff83bd3787ccf3105f/osu.Game/Scoring/Legacy/LegacyScoreDecoder.cs#L107-L113
+        let replay_id = if game_version >= 20140721 {
+            self.unpack_long()?
+        } 
+        else if game_version >= 20121008 {
+            self.unpack_int().map(|v| v as i64)?
+        } else {
+            0
+        };
+
+        if replay_id == 0 {
+            Ok(-1)
+        } else {
+            Ok(replay_id)
         }
     }
 
