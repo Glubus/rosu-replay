@@ -237,3 +237,44 @@ pub struct LifeBarState {
     pub time: i32,
     pub life: f32,
 }
+
+/// Lazer specific info about score stats
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LazerScoreInfoStatistics {
+    // NOTE(CRUCIAL): Skip serializing on `None` here
+    // is to prevent appearing `field: null` fields
+    // in the replays because lazer can't handle nulls in json
+    // for some reason
+    #[serde(skip_serializing_if = "Option::is_none")]
+    miss: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    meh: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ok: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    great: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    large_tick_hit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ignore_miss: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ignore_hit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slider_tail_hit: Option<u32>,
+}
+
+/// Lazer specific info about score
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LazerScoreInfo {
+    client_version: String,
+    online_id: u64,
+    user_id: u32,
+    rank: String,
+    // TODO: Properly deserialize/serialize this into/from
+    // `rosu_mods` structure?
+    mods: serde_json::Value,
+    statistics: LazerScoreInfoStatistics,
+    maximum_statistics: LazerScoreInfoStatistics,
+    total_score_without_mods: u32,
+    pauses: serde_json::Value,
+}

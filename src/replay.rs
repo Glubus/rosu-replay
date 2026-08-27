@@ -53,6 +53,9 @@ pub struct Replay {
     pub replay_id: i64,
     /// The rng seed of this replay, or None if not present
     pub rng_seed: Option<i32>,
+    /// Lazer specific score info, only present if replay is coming
+    /// from the lazer and replay version is >= 30000001
+    pub lazer_score_info: Option<LazerScoreInfo>,
 }
 
 impl Replay {

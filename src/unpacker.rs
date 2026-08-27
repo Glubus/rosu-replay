@@ -94,7 +94,9 @@ impl<R: Read> Unpacker<R> {
 
         let mut buffer = Vec::new();
 
-        read::XzDecoder::new_multi_decoder(compressed_data.as_slice()).read_to_end(&mut buffer)?;
+        read::XzDecoder::new_multi_decoder(
+            compressed_data.as_slice()
+        ).read_to_end(&mut buffer)?;
 
         let data_str = String::from_utf8(buffer)?;
         Self::parse_replay_data(&data_str, mode)
@@ -240,6 +242,29 @@ impl<R: Read> Unpacker<R> {
         }
     }
 
+    pub fn unpack_lazer_score_info(&mut self) -> Result<Option<LazerScoreInfo>, ReplayError> {
+        match self.unpack_int() {
+            Ok(len) => {
+                let len = len as usize;
+
+                let mut compressed_data = vec![0u8; len];
+                self.reader.read_exact(&mut compressed_data)?;
+
+                let mut buffer = Vec::new();
+
+                read::XzDecoder::new_multi_decoder(compressed_data.as_slice())
+                    .read_to_end(&mut buffer)?;
+
+                let data_str = String::from_utf8(buffer)?;
+                dbg!(&data_str);
+                let score_info: LazerScoreInfo = serde_json::from_str(&data_str)?;
+
+                Ok(Some(score_info))
+            },
+            Err(_) => Ok(None),
+        }
+    }
+
     pub fn unpack(mut self) -> Result<Replay, ReplayError> {
         let mode = GameMode::from(self.unpack_byte()?);
         let game_version = self.unpack_int()?;
@@ -259,7 +284,16 @@ impl<R: Read> Unpacker<R> {
         let life_bar_graph = self.unpack_life_bar()?;
         let timestamp = self.unpack_timestamp()?;
         let (replay_data, rng_seed) = self.unpack_play_data(mode)?;
-        let replay_id = self.unpack_replay_id()?;
+
+        // named as `LegacyOnlineId` in lazer codebase
+        let replay_id = self.unpack_replay_id(game_version)?;
+        
+        // https://github.com/ppy/osu/blob/48c4800e3ae4ee752452cdff83bd3787ccf3105f/osu.Game/Scoring/Legacy/LegacyScoreDecoder.cs#L117
+        let lazer_score_info = if game_version >= 30000001 {
+            self.unpack_lazer_score_info()?
+        } else {
+            None
+        };
 
         Ok(Replay {
             mode,
@@ -282,6 +316,7 @@ impl<R: Read> Unpacker<R> {
             replay_data,
             replay_id,
             rng_seed,
+            lazer_score_info,
         })
     }
 }
