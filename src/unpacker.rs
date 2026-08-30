@@ -256,7 +256,6 @@ impl<R: Read> Unpacker<R> {
                     .read_to_end(&mut buffer)?;
 
                 let data_str = String::from_utf8(buffer)?;
-                dbg!(&data_str);
                 let score_info: LazerScoreInfo = serde_json::from_str(&data_str)?;
 
                 Ok(Some(score_info))

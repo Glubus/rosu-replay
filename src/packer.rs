@@ -292,11 +292,6 @@ impl Packer {
         self.pack_long(&mut buffer, replay.replay_id)?;
         
         if let Some(lazer_score_info) = &replay.lazer_score_info {
-            // TODO: It's probably makes sense to add
-            // `if replay.game_version >= 30000001`
-            // here too, but i haven't tested yet if 
-            // replays reading will break in any clients if this data present
-            // when version is <30000001
             self.pack_lazer_score_info(&mut buffer, lazer_score_info)?;
         }
 

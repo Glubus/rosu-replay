@@ -267,14 +267,19 @@ pub struct LazerScoreInfoStatistics {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LazerScoreInfo {
     client_version: String,
-    online_id: u64,
-    user_id: u32,
+    // Can be negative if replay done offline
+    online_id: i64,
+    // Can be empty if replay done offline
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user_id: Option<u32>,
     rank: String,
     // TODO: Properly deserialize/serialize this into/from
     // `rosu_mods` structure?
     mods: serde_json::Value,
     statistics: LazerScoreInfoStatistics,
     maximum_statistics: LazerScoreInfoStatistics,
-    total_score_without_mods: u32,
-    pauses: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_score_without_mods: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pauses: Option<Vec<i64>>,
 }
