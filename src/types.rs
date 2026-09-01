@@ -3,7 +3,7 @@
 //! This module defines all the data structures used to represent osu! replay information,
 //! including game modes, mods, key states, and replay events for different game modes.
 
-use rosu_mods::{GameMods, serde::GameModsSeed};
+use rosu_mods::{serde::GameModsSeed, GameMods};
 use serde::{Deserialize, Serialize};
 
 fn deserialize_mods<'de, D: serde::Deserializer<'de>>(d: D) -> Result<GameMods, D::Error> {

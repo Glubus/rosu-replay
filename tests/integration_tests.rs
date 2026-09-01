@@ -1,4 +1,7 @@
-use rosu_mods::{GameMod, generated_mods::{AccuracyChallengeOsu, DoubleTimeOsu, HardRockOsu, HiddenOsu, SuddenDeathOsu}};
+use rosu_mods::{
+    generated_mods::{AccuracyChallengeOsu, DoubleTimeOsu, HardRockOsu, HiddenOsu, SuddenDeathOsu},
+    GameMod,
+};
 use rosu_replay::{GameMode, Key, KeyMania, KeyTaiko, LifeBarState, Mod, Replay, ReplayEvent};
 
 /// Test parsing basic replay data structures
@@ -174,38 +177,48 @@ fn test_life_bar_data() {
 
 #[test]
 fn test_lazer_replay() {
-    let mut replay = Replay::from_path("./assets/test_lazer.osr")
-        .expect("failed to read lazer replay");
-    
+    let mut replay =
+        Replay::from_path("./assets/test_lazer.osr").expect("failed to read lazer replay");
+
     // 1. Check if lazer score info is present
     assert!(replay.lazer_score_info.is_some());
 
     let lazer_score_info = &replay.lazer_score_info.as_ref().unwrap();
-    
+
     // 2. Checking if mods parsed correctly
-    assert!(lazer_score_info.mods.contains(&GameMod::SuddenDeathOsu(SuddenDeathOsu {
-        fail_on_slider_tail: None,
-        restart: None,
-    })));
+    assert!(lazer_score_info
+        .mods
+        .contains(&GameMod::SuddenDeathOsu(SuddenDeathOsu {
+            fail_on_slider_tail: None,
+            restart: None,
+        })));
 
-    assert!(lazer_score_info.mods.contains(&GameMod::HiddenOsu(HiddenOsu { 
-        only_fade_approach_circles: None 
-    })));
+    assert!(lazer_score_info
+        .mods
+        .contains(&GameMod::HiddenOsu(HiddenOsu {
+            only_fade_approach_circles: None
+        })));
 
-    assert!(lazer_score_info.mods.contains(&GameMod::DoubleTimeOsu(DoubleTimeOsu { 
-        speed_change: Some(1.20), adjust_pitch: None 
-    })));
+    assert!(lazer_score_info
+        .mods
+        .contains(&GameMod::DoubleTimeOsu(DoubleTimeOsu {
+            speed_change: Some(1.20),
+            adjust_pitch: None
+        })));
 
     assert_eq!(lazer_score_info.mods.clock_rate().unwrap(), 1.20);
 
-    assert!(lazer_score_info.mods.contains(&GameMod::AccuracyChallengeOsu(AccuracyChallengeOsu { 
-        minimum_accuracy: Some(0.95), 
-        accuracy_judge_mode: None, 
-        restart: None 
-    })));
+    assert!(lazer_score_info
+        .mods
+        .contains(&GameMod::AccuracyChallengeOsu(AccuracyChallengeOsu {
+            minimum_accuracy: Some(0.95),
+            accuracy_judge_mode: None,
+            restart: None
+        })));
 
-    assert!(!lazer_score_info.mods.contains(&GameMod::HardRockOsu(HardRockOsu { 
-    })));
+    assert!(!lazer_score_info
+        .mods
+        .contains(&GameMod::HardRockOsu(HardRockOsu {})));
 
     // 3. Writing and reading back and checking if lazer score info is still present
     let mut buffer: Vec<u8> = Vec::new();
@@ -297,7 +310,7 @@ fn create_test_replay() -> Replay {
         replay_data: vec![create_osu_event(), create_osu_event(), create_osu_event()],
         replay_id: 12345,
         rng_seed: Some(67890),
-        lazer_score_info: None
+        lazer_score_info: None,
     }
 }
 

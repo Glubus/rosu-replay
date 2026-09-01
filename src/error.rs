@@ -30,5 +30,5 @@ pub enum ReplayError {
     Lzma(#[from] liblzma::stream::Error),
 
     #[error("JSON parsing error: {0}")]
-    SerdeJson(#[from] serde_json::Error)
+    SerdeJson(#[from] serde_json::Error),
 }

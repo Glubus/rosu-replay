@@ -94,9 +94,7 @@ impl<R: Read> Unpacker<R> {
 
         let mut buffer = Vec::new();
 
-        read::XzDecoder::new_multi_decoder(
-            compressed_data.as_slice()
-        ).read_to_end(&mut buffer)?;
+        read::XzDecoder::new_multi_decoder(compressed_data.as_slice()).read_to_end(&mut buffer)?;
 
         let data_str = String::from_utf8(buffer)?;
         Self::parse_replay_data(&data_str, mode)
@@ -194,8 +192,7 @@ impl<R: Read> Unpacker<R> {
         // https://github.com/ppy/osu/blob/48c4800e3ae4ee752452cdff83bd3787ccf3105f/osu.Game/Scoring/Legacy/LegacyScoreDecoder.cs#L107-L113
         let replay_id = if game_version >= 20140721 {
             self.unpack_long()?
-        } 
-        else if game_version >= 20121008 {
+        } else if game_version >= 20121008 {
             self.unpack_int().map(|v| v as i64)?
         } else {
             0
@@ -259,7 +256,7 @@ impl<R: Read> Unpacker<R> {
                 let score_info: LazerScoreInfo = serde_json::from_str(&data_str)?;
 
                 Ok(Some(score_info))
-            },
+            }
             Err(_) => Ok(None),
         }
     }
@@ -286,7 +283,7 @@ impl<R: Read> Unpacker<R> {
 
         // named as `LegacyOnlineId` in lazer codebase
         let replay_id = self.unpack_replay_id(game_version)?;
-        
+
         // https://github.com/ppy/osu/blob/48c4800e3ae4ee752452cdff83bd3787ccf3105f/osu.Game/Scoring/Legacy/LegacyScoreDecoder.cs#L117
         let lazer_score_info = if game_version >= 30000001 {
             self.unpack_lazer_score_info()?

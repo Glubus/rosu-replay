@@ -1,4 +1,4 @@
-use crate::{error::ReplayError, replay::{Replay}, types::*};
+use crate::{error::ReplayError, replay::Replay, types::*};
 use byteorder::{LittleEndian, WriteBytesExt};
 use liblzma::{stream::LzmaOptions, write::XzEncoder};
 use std::io::Write;
@@ -245,19 +245,14 @@ impl Packer {
         writer: &mut impl Write,
         lazer_score_info: &LazerScoreInfo,
     ) -> Result<(), ReplayError> {
-
         let score_info_str = serde_json::to_string(lazer_score_info)?;
 
         let data_bytes = score_info_str.as_bytes();
         let mut compressed = Vec::with_capacity(data_bytes.len());
 
-        let lzma_stream = liblzma::stream::Stream::new_lzma_encoder(
-            &LzmaOptions::new_preset(6)?
-        )?;
+        let lzma_stream = liblzma::stream::Stream::new_lzma_encoder(&LzmaOptions::new_preset(6)?)?;
 
-        let mut encoder = XzEncoder::new_stream(
-            &mut compressed, lzma_stream
-        );
+        let mut encoder = XzEncoder::new_stream(&mut compressed, lzma_stream);
 
         encoder.write_all(data_bytes)?;
         encoder.finish()?;
@@ -290,14 +285,13 @@ impl Packer {
         self.pack_timestamp(&mut buffer, &replay.timestamp)?;
         self.pack_replay_data(&mut buffer, &replay.replay_data, replay.rng_seed)?;
         self.pack_long(&mut buffer, replay.replay_id)?;
-        
+
         if let Some(lazer_score_info) = &replay.lazer_score_info {
             self.pack_lazer_score_info(&mut buffer, lazer_score_info)?;
         }
 
         Ok(buffer)
     }
-
 
     /// Packs a replay without LZMA compression on the replay data.
     ///
