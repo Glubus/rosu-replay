@@ -3,7 +3,14 @@
 //! This module defines all the data structures used to represent osu! replay information,
 //! including game modes, mods, key states, and replay events for different game modes.
 
+use rosu_mods::{GameMods, serde::GameModsSeed};
 use serde::{Deserialize, Serialize};
+
+fn deserialize_mods<'de, D: serde::Deserializer<'de>>(d: D) -> Result<GameMods, D::Error> {
+    d.deserialize_any(GameModsSeed::AllowMultipleModes {
+        deny_unknown_fields: false,
+    })
+}
 
 /// Represents the different game modes in osu!
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -246,40 +253,39 @@ pub struct LazerScoreInfoStatistics {
     // in the replays because lazer can't handle nulls in json
     // for some reason
     #[serde(skip_serializing_if = "Option::is_none")]
-    miss: Option<u32>,
+    pub miss: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    meh: Option<u32>,
+    pub meh: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    ok: Option<u32>,
+    pub ok: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    great: Option<u32>,
+    pub great: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    large_tick_hit: Option<u32>,
+    pub large_tick_hit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    ignore_miss: Option<u32>,
+    pub ignore_miss: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    ignore_hit: Option<u32>,
+    pub ignore_hit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    slider_tail_hit: Option<u32>,
+    pub slider_tail_hit: Option<u32>,
 }
 
 /// Lazer specific info about score
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LazerScoreInfo {
-    client_version: String,
+    pub client_version: String,
     // Can be negative if replay done offline
-    online_id: i64,
+    pub online_id: i64,
     // Can be empty if replay done offline
     #[serde(skip_serializing_if = "Option::is_none")]
-    user_id: Option<u32>,
-    rank: String,
-    // TODO: Properly deserialize/serialize this into/from
-    // `rosu_mods` structure?
-    mods: serde_json::Value,
-    statistics: LazerScoreInfoStatistics,
-    maximum_statistics: LazerScoreInfoStatistics,
+    pub user_id: Option<u32>,
+    pub rank: String,
+    #[serde(deserialize_with = "deserialize_mods")]
+    pub mods: GameMods,
+    pub statistics: LazerScoreInfoStatistics,
+    pub maximum_statistics: LazerScoreInfoStatistics,
     #[serde(skip_serializing_if = "Option::is_none")]
-    total_score_without_mods: Option<u32>,
+    pub total_score_without_mods: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pauses: Option<Vec<i64>>,
+    pub pauses: Option<Vec<i64>>,
 }

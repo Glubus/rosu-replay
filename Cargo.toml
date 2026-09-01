@@ -37,3 +37,4 @@ web-sys = { version = "0.3", optional = true, features = [
 ] }
 console_error_panic_hook = { version = "0.1", optional = true }
 serde_json = "1.0.151"
+rosu-mods = { version = "0.4.1", features = ["serde"] }

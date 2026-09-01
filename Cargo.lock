@@ -235,6 +235,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
+name = "rosu-mods"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc58d42f8f2308b4b241de147827af84179d0a318de250495c7c5e47cb701cd9"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "rosu-replay"
 version = "0.2.2"
 dependencies = [
@@ -244,6 +253,7 @@ dependencies = [
  "console_error_panic_hook",
  "js-sys",
  "liblzma",
+ "rosu-mods",
  "serde",
  "serde_json",
  "thiserror",
