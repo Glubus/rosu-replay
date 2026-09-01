@@ -246,5 +246,6 @@ fn create_minimal_test_replay() -> Replay {
         ],
         replay_id: 123456,
         rng_seed: None,
+        lazer_score_info: None,
     }
 }
