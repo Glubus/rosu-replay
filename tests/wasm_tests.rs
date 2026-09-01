@@ -115,7 +115,6 @@ fn test_wasm_error_handling() {
     if let Err(wasm_error) = result {
         let message = wasm_error.message();
         assert!(!message.is_empty());
-        assert!(message.len() > 0);
     }
 }
 
@@ -194,16 +193,14 @@ fn test_wasm_error_scenarios() {
 
     // Test parse_replay_data_wasm with invalid data (should return 0 events for empty/invalid data)
     let result = parse_replay_data_wasm(b"invalid", true, true, WasmGameMode::Std);
-    match result {
-        Ok(count) => assert_eq!(count, 0), // Empty/invalid data should result in 0 events
-        Err(_) => {}                       // Error is also acceptable
+    if let Ok(count) = result {
+        assert_eq!(count, 0)
     }
 
     // Test parse_replay_data_wasm with malformed replay data
     let result = parse_replay_data_wasm(b"not|valid|data", true, true, WasmGameMode::Std);
-    match result {
-        Ok(count) => assert_eq!(count, 0), // Malformed data should result in 0 events
-        Err(_) => {}                       // Error is also acceptable
+    if let Ok(count) = result {
+        assert_eq!(count, 0)
     }
 }
 
