@@ -3,14 +3,7 @@
 //! This module defines all the data structures used to represent osu! replay information,
 //! including game modes, mods, key states, and replay events for different game modes.
 
-use rosu_mods::{serde::GameModsSeed, GameMods};
 use serde::{Deserialize, Serialize};
-
-fn deserialize_mods<'de, D: serde::Deserializer<'de>>(d: D) -> Result<GameMods, D::Error> {
-    d.deserialize_any(GameModsSeed::AllowMultipleModes {
-        deny_unknown_fields: false,
-    })
-}
 
 /// Represents the different game modes in osu!
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -184,56 +177,7 @@ impl From<u32> for KeyMania {
     }
 }
 
-/// A single event (frame) in a replay, specific to the game mode.
-///
-/// Each variant contains mode-specific information about what happened
-/// at a particular time during the replay.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ReplayEvent {
-    Osu(ReplayEventOsu),
-    Taiko(ReplayEventTaiko),
-    Catch(ReplayEventCatch),
-    Mania(ReplayEventMania),
-}
-
-impl ReplayEvent {
-    pub fn time_delta(&self) -> i32 {
-        match self {
-            ReplayEvent::Osu(event) => event.time_delta,
-            ReplayEvent::Taiko(event) => event.time_delta,
-            ReplayEvent::Catch(event) => event.time_delta,
-            ReplayEvent::Mania(event) => event.time_delta,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReplayEventOsu {
-    pub time_delta: i32,
-    pub x: f32,
-    pub y: f32,
-    pub keys: Key,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReplayEventTaiko {
-    pub time_delta: i32,
-    pub x: i32,
-    pub keys: KeyTaiko,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReplayEventCatch {
-    pub time_delta: i32,
-    pub x: f32,
-    pub dashing: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReplayEventMania {
-    pub time_delta: i32,
-    pub keys: KeyMania,
-}
+pub use crate::frame::*;
 
 /// Represents the life bar state at a specific point in time during a replay.
 ///
@@ -243,49 +187,4 @@ pub struct ReplayEventMania {
 pub struct LifeBarState {
     pub time: i32,
     pub life: f32,
-}
-
-/// Lazer specific info about score stats
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct LazerScoreInfoStatistics {
-    // NOTE(CRUCIAL): Skip serializing on `None` here
-    // is to prevent appearing `field: null` fields
-    // in the replays because lazer can't handle nulls in json
-    // for some reason
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub miss: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub meh: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ok: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub great: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub large_tick_hit: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ignore_miss: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ignore_hit: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub slider_tail_hit: Option<u32>,
-}
-
-/// Lazer specific info about score
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct LazerScoreInfo {
-    pub client_version: String,
-    // Can be negative if replay done offline
-    pub online_id: i64,
-    // Can be empty if replay done offline
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_id: Option<u32>,
-    pub rank: String,
-    #[serde(deserialize_with = "deserialize_mods")]
-    pub mods: GameMods,
-    pub statistics: LazerScoreInfoStatistics,
-    pub maximum_statistics: LazerScoreInfoStatistics,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub total_score_without_mods: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pauses: Option<Vec<i64>>,
 }

@@ -61,31 +61,8 @@ fn test_invalid_string_byte_error() {
 fn test_lzma_error() {
     use rosu_replay::unpacker::Unpacker;
 
-    // Create a replay with invalid compressed data
-    let mut data = Vec::new();
-    // Add valid header
-    data.push(0); // game mode
-    data.extend_from_slice(&[1, 0, 0, 0]); // game version
-    data.push(0x00); // empty beatmap hash
-    data.push(0x00); // empty username
-    data.push(0x00); // empty replay hash
-    data.extend_from_slice(&[0, 0]); // count_300
-    data.extend_from_slice(&[0, 0]); // count_100
-    data.extend_from_slice(&[0, 0]); // count_50
-    data.extend_from_slice(&[0, 0]); // count_geki
-    data.extend_from_slice(&[0, 0]); // count_katu
-    data.extend_from_slice(&[0, 0]); // count_miss
-    data.extend_from_slice(&[0, 0, 0, 0]); // score
-    data.extend_from_slice(&[0, 0]); // max_combo
-    data.push(0); // perfect
-    data.extend_from_slice(&[0, 0, 0, 0]); // mods
-    data.push(0x00); // empty life bar
-    data.extend_from_slice(&[0; 8]); // timestamp
-
-    // Add invalid compressed replay data
-    data.extend_from_slice(&[10, 0, 0, 0]); // length = 10
-    data.extend_from_slice(&[0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA, 0xF9, 0xF8, 0xF7, 0xF6]); // invalid LZMA data
-
+    // Only the length-prefixed frame block: unpack_play_data does not read a header.
+    let data = [3, 0, 0, 0, 0xff, 0xfe, 0xfd];
     let mut unpacker = Unpacker::new(Cursor::new(data));
     let result = unpacker.unpack_play_data(rosu_replay::GameMode::Std);
     assert!(result.is_err());

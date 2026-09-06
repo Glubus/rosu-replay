@@ -61,7 +61,7 @@ jobs:
         run: cargo clippy --all-features --all-targets --target ${{ matrix.target }} -- -D warnings
 
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --all-features --verbose
 
       - name: Run doc tests
         run: cargo test --doc --verbose
@@ -127,3 +127,21 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           fail_ci_if_error: false
+
+  wasm:
+    name: Build WASM bindings
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install Rust target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Install C cross compiler for liblzma
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+      - name: Build WASM module
+        run: cargo build --target wasm32-unknown-unknown --features wasm
+        env:
+          CC_wasm32_unknown_unknown: clang
+          AR_wasm32_unknown_unknown: llvm-ar

@@ -1,6 +1,5 @@
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
-use liblzma::decode_all;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Cursor};
@@ -8,15 +7,11 @@ use std::path::Path;
 
 use crate::{error::ReplayError, packer::Packer, types::*, unpacker::Unpacker};
 
-/// A replay found in a `.osr` file, or following the osr format.
-///
-/// To create a replay, use `Replay::from_path`, `Replay::from_file`, or `Replay::from_bytes`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Replay {
+/// Fields shared by stable and lazer binary headers and replay frames.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReplayCommon {
     /// The game mode this replay was played on
     pub mode: GameMode,
-    /// The game version this replay was played on
-    pub game_version: u32,
     /// The hash of the beatmap this replay was played on
     pub beatmap_hash: String,
     /// The user that played this replay
@@ -41,21 +36,93 @@ pub struct Replay {
     pub max_combo: u16,
     /// Whether this replay was perfect or not
     pub perfect: bool,
-    /// The mods this replay was played with
-    pub mods: Mod,
     /// The life bar of this replay over time
     pub life_bar_graph: Option<Vec<LifeBarState>>,
     /// The timestamp when this replay was played
     pub timestamp: DateTime<Utc>,
     /// The replay data of the replay, including cursor position and keys pressed
     pub replay_data: Vec<ReplayEvent>,
-    /// The replay id of this replay, or 0 if not submitted
-    pub replay_id: i64,
     /// The rng seed of this replay, or None if not present
     pub rng_seed: Option<i32>,
-    /// Lazer specific score info, only present if replay is coming
-    /// from the lazer and replay version is >= 30000001
-    pub lazer_score_info: Option<LazerScoreInfo>,
+}
+
+impl ReplayCommon {
+    pub(crate) fn validate(&self) -> Result<(), ReplayError> {
+        for frame in &self.replay_data {
+            let mode = match frame {
+                ReplayEvent::Osu(_) => GameMode::Std,
+                ReplayEvent::Taiko(_) => GameMode::Taiko,
+                ReplayEvent::Catch(_) => GameMode::Catch,
+                ReplayEvent::Mania(_) => GameMode::Mania,
+            };
+            if mode != self.mode {
+                return Err(ReplayError::InvalidFormat(
+                    "frame ruleset differs from replay mode".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// A stable or lazer replay. The version selects its binary layout.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Replay {
+    Stable(crate::StableReplay),
+    Lazer(crate::LazerReplay),
+}
+
+impl Replay {
+    pub fn common(&self) -> &ReplayCommon {
+        match self {
+            Self::Stable(v) => v.common(),
+            Self::Lazer(v) => v.common(),
+        }
+    }
+    /// Edited frame modes are validated before writing.
+    pub fn common_mut(&mut self) -> &mut ReplayCommon {
+        match self {
+            Self::Stable(v) => v.common_mut(),
+            Self::Lazer(v) => v.common_mut(),
+        }
+    }
+    pub fn game_version(&self) -> u32 {
+        match self {
+            Self::Stable(v) => v.version().get(),
+            Self::Lazer(v) => v.version().get(),
+        }
+    }
+    /// Legacy bitflags from the binary header; lazer's full mods live in score_info.
+    pub fn legacy_mods(&self) -> Mod {
+        match self {
+            Self::Stable(v) => v.mods(),
+            Self::Lazer(v) => v.legacy_mods(),
+        }
+    }
+    /// Preserves the raw signed ID, including zero/offline sentinels.
+    pub fn legacy_online_id(&self) -> Option<i64> {
+        match self {
+            Self::Stable(v) => v.online_id(),
+            Self::Lazer(v) => Some(v.legacy_online_id()),
+        }
+    }
+    pub(crate) fn validate(&self) -> Result<(), ReplayError> {
+        match self {
+            Self::Stable(v) => v.validate(),
+            Self::Lazer(v) => v.validate(),
+        }
+    }
+}
+
+impl From<crate::StableReplay> for Replay {
+    fn from(value: crate::StableReplay) -> Self {
+        Self::Stable(value)
+    }
+}
+impl From<crate::LazerReplay> for Replay {
+    fn from(value: crate::LazerReplay) -> Self {
+        Self::Lazer(value)
+    }
 }
 
 impl Replay {
@@ -86,6 +153,14 @@ impl Replay {
     pub fn from_reader<R: std::io::Read>(reader: R) -> Result<Self, ReplayError> {
         let unpacker = Unpacker::new(reader);
         unpacker.unpack()
+    }
+
+    /// Read with explicit allocation and decompression limits.
+    pub fn from_reader_with_limits<R: std::io::Read>(
+        reader: R,
+        limits: crate::ReadLimits,
+    ) -> Result<Self, ReplayError> {
+        Unpacker::with_limits(reader, limits).unpack()
     }
 
     /// Creates a new `Replay` object from a byte slice containing `.osr` data.
@@ -156,7 +231,7 @@ impl Replay {
         packer.pack(self)
     }
 
-    /// Returns the bytes representing this `Replay`, in `.osr` format, without LZMA compression.
+    /// Diagnostic binary dump with uncompressed frames. This is NOT a valid `.osr`.
     ///
     /// This method is similar to `pack` but saves the replay data in uncompressed format,
     /// which can be useful for debugging or when you need faster processing at the cost
@@ -164,13 +239,13 @@ impl Replay {
     ///
     /// # Returns
     ///
-    /// The bytes representing this `Replay`, in `.osr` format without LZMA compression
+    /// Diagnostic bytes with raw frames and the normal version-dependent suffix
     pub fn pack_uncompressed(&self) -> Result<Vec<u8>, ReplayError> {
         let packer = Packer::new();
         packer.pack_uncompressed(self)
     }
 
-    /// Returns the bytes representing this `Replay`, in `.osr` format, without LZMA compression, with custom packer settings.
+    /// Diagnostic dump with custom packer settings. This is NOT a valid `.osr`.
     ///
     /// # Arguments
     ///
@@ -178,7 +253,7 @@ impl Replay {
     ///
     /// # Returns
     ///
-    /// The bytes representing this `Replay`, in `.osr` format without LZMA compression
+    /// Diagnostic bytes with raw frames and the normal version-dependent suffix
     pub fn pack_uncompressed_with(&self, packer: &Packer) -> Result<Vec<u8>, ReplayError> {
         packer.pack_uncompressed(self)
     }
@@ -214,7 +289,10 @@ pub fn parse_replay_data(
     };
 
     let decompressed_data = if !decompressed {
-        decode_all(&data[..]).map_err(|e| ReplayError::LzmaCustom(format!("{}", e)))?
+        crate::codec::compression::decode(
+            &data,
+            crate::ReadLimits::default().max_decompressed_frames,
+        )?
     } else {
         data
     };
