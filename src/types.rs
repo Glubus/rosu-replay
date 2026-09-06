@@ -177,56 +177,7 @@ impl From<u32> for KeyMania {
     }
 }
 
-/// A single event (frame) in a replay, specific to the game mode.
-///
-/// Each variant contains mode-specific information about what happened
-/// at a particular time during the replay.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ReplayEvent {
-    Osu(ReplayEventOsu),
-    Taiko(ReplayEventTaiko),
-    Catch(ReplayEventCatch),
-    Mania(ReplayEventMania),
-}
-
-impl ReplayEvent {
-    pub fn time_delta(&self) -> i32 {
-        match self {
-            ReplayEvent::Osu(event) => event.time_delta,
-            ReplayEvent::Taiko(event) => event.time_delta,
-            ReplayEvent::Catch(event) => event.time_delta,
-            ReplayEvent::Mania(event) => event.time_delta,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReplayEventOsu {
-    pub time_delta: i32,
-    pub x: f32,
-    pub y: f32,
-    pub keys: Key,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReplayEventTaiko {
-    pub time_delta: i32,
-    pub x: i32,
-    pub keys: KeyTaiko,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReplayEventCatch {
-    pub time_delta: i32,
-    pub x: f32,
-    pub dashing: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReplayEventMania {
-    pub time_delta: i32,
-    pub keys: KeyMania,
-}
+pub use crate::frame::*;
 
 /// Represents the life bar state at a specific point in time during a replay.
 ///

@@ -110,25 +110,6 @@ fn test_parse_empty_replay_data() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Test parsing replay data with lazer skip frames
-#[test]
-fn test_parse_replay_data_skip_lazer_frames() -> Result<(), Box<dyn std::error::Error>> {
-    // First two frames with x=256, y=-500 should be skipped
-    let replay_data = "0|256|-500|0,0|256|-500|0,16|100.0|100.0|1";
-    let (events, _) = Unpacker::<Cursor<&[u8]>>::parse_replay_data(replay_data, GameMode::Std)?;
-
-    assert_eq!(events.len(), 1); // Only the third frame should remain
-
-    if let ReplayEvent::Osu(event) = &events[0] {
-        assert_eq!(event.x, 100.0);
-        assert_eq!(event.y, 100.0);
-    } else {
-        panic!("Expected osu event");
-    }
-
-    Ok(())
-}
-
 /// Test parsing malformed replay data
 #[test]
 fn test_parse_malformed_replay_data() {

@@ -24,7 +24,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! rosu-replay = "0.1"
+//! rosu-replay = { path = "path/to/rosu-replay" }
 //! ```
 //!
 //! ## Basic Usage
@@ -35,13 +35,13 @@
 //! // Parse a replay file
 //! let replay = Replay::from_path("path/to/replay.osr")?;
 //!
-//! println!("Player: {}", replay.username);
-//! println!("Score: {}", replay.score);
-//! println!("Max Combo: {}", replay.max_combo);
-//! println!("Game Mode: {:?}", replay.mode);
+//! println!("Player: {}", replay.common().username);
+//! println!("Score: {}", replay.common().score);
+//! println!("Max Combo: {}", replay.common().max_combo);
+//! println!("Game Mode: {:?}", replay.common().mode);
 //!
 //! // Access replay events
-//! for event in &replay.replay_data {
+//! for event in &replay.common().replay_data {
 //!     match event {
 //!         rosu_replay::ReplayEvent::Osu(osu_event) => {
 //!             println!("Cursor at ({}, {}) at time +{}ms",
@@ -77,18 +77,25 @@
 //!
 //! See the `examples/` directory for more comprehensive usage examples.
 
+pub mod codec;
 pub mod error;
+pub mod frame;
+pub mod lazer;
 pub mod packer;
 pub mod replay;
+pub mod stable;
 pub mod types;
 pub mod unpacker;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
+pub use codec::reader::ReadLimits;
 pub use error::ReplayError;
+pub use lazer::{HitResult, HitStatistics, LazerMod, LazerReplay, LazerScoreInfo, LazerVersion};
 pub use packer::Packer;
-pub use replay::Replay;
+pub use replay::{Replay, ReplayCommon};
+pub use stable::{StableReplay, StableVersion};
 pub use types::*;
 
 /// Parse replay data from a string (for API usage)

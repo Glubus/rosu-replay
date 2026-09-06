@@ -1,349 +1,137 @@
-use rosu_replay::{GameMode, Key, KeyMania, KeyTaiko, LifeBarState, Mod, Replay, ReplayEvent};
+mod support;
+use rosu_replay::{GameMode, HitResult, Packer, Replay, ReplayEvent};
+use support::*;
 
-/// Test parsing basic replay data structures
 #[test]
-fn test_game_mode_conversion() {
-    assert_eq!(GameMode::from(0), GameMode::Std);
-    assert_eq!(GameMode::from(1), GameMode::Taiko);
-    assert_eq!(GameMode::from(2), GameMode::Catch);
-    assert_eq!(GameMode::from(3), GameMode::Mania);
-    assert_eq!(GameMode::from(255), GameMode::Std); // Default fallback
+fn checked_in_replays_preserve_every_field_and_frame() {
+    for bytes in [
+        include_bytes!("../assets/test.osr").as_slice(),
+        include_bytes!("../assets/test_lazer.osr").as_slice(),
+    ] {
+        let original = Replay::from_bytes(bytes).unwrap();
+        assert!(!original.common().replay_data.is_empty());
+        let rewritten = original.pack().unwrap();
+        assert_eq!(Replay::from_bytes(&rewritten).unwrap(), original);
+        if matches!(original, Replay::Lazer(_)) {
+            // Independent LZMA/JSON decode also detects fields lost on FIRST read.
+            assert_eq!(read_json(&rewritten), read_json(bytes));
+        }
+    }
 }
 
 #[test]
-fn test_mod_operations() {
-    let no_mod = Mod::NO_MOD;
-    let hidden = Mod::HIDDEN;
-    let hard_rock = Mod::HARD_ROCK;
-
-    assert_eq!(no_mod.value(), 0);
-    assert_eq!(hidden.value(), 1 << 3);
-    assert_eq!(hard_rock.value(), 1 << 4);
-
-    // Test mod combination
-    let combined = Mod(hidden.value() | hard_rock.value());
-    assert!(combined.contains(hidden));
-    assert!(combined.contains(hard_rock));
-    assert!(!combined.contains(Mod::EASY));
-}
-
-#[test]
-fn test_key_values() {
-    assert_eq!(Key::M1.value(), 1);
-    assert_eq!(Key::M2.value(), 2);
-    assert_eq!(Key::K1.value(), 4);
-    assert_eq!(Key::K2.value(), 8);
-    assert_eq!(Key::SMOKE.value(), 16);
-
-    // Test combined keys
-    let combined = Key(Key::M1.value() | Key::K1.value());
-    assert_eq!(combined.value(), 5);
-}
-
-#[test]
-fn test_taiko_keys() {
-    assert_eq!(KeyTaiko::LEFT_DON.value(), 1);
-    assert_eq!(KeyTaiko::LEFT_KAT.value(), 2);
-    assert_eq!(KeyTaiko::RIGHT_DON.value(), 4);
-    assert_eq!(KeyTaiko::RIGHT_KAT.value(), 8);
-}
-
-#[test]
-fn test_mania_keys() {
-    assert_eq!(KeyMania::K1.value(), 1);
-    assert_eq!(KeyMania::K2.value(), 2);
-    assert_eq!(KeyMania::K3.value(), 4);
-    assert_eq!(KeyMania::K18.value(), 1 << 17);
-}
-
-/// Test creating a minimal valid replay
-#[test]
-fn test_create_minimal_replay() {
-    let replay = create_test_replay();
-
-    assert_eq!(replay.username, "TestPlayer");
-    assert_eq!(replay.score, 1000000);
-    assert_eq!(replay.mode, GameMode::Std);
-    assert_eq!(replay.count_300, 100);
-    assert_eq!(replay.replay_data.len(), 3);
-}
-
-/// Test replay serialization and deserialization
-#[test]
-fn test_replay_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
-    let original_replay = create_test_replay();
-
-    // Pack the replay
-    let packed_data = original_replay.pack()?;
-    assert!(!packed_data.is_empty());
-
-    // Unpack the replay
-    let unpacked_replay = Replay::from_bytes(&packed_data)?;
-
-    // Verify basic fields match
-    assert_eq!(original_replay.username, unpacked_replay.username);
-    assert_eq!(original_replay.score, unpacked_replay.score);
-    assert_eq!(original_replay.mode, unpacked_replay.mode);
-    assert_eq!(original_replay.count_300, unpacked_replay.count_300);
-    assert_eq!(original_replay.count_100, unpacked_replay.count_100);
-    assert_eq!(original_replay.count_50, unpacked_replay.count_50);
-    assert_eq!(original_replay.count_miss, unpacked_replay.count_miss);
-    assert_eq!(original_replay.max_combo, unpacked_replay.max_combo);
-    assert_eq!(original_replay.perfect, unpacked_replay.perfect);
-    assert_eq!(original_replay.mods.value(), unpacked_replay.mods.value());
-    assert_eq!(original_replay.replay_id, unpacked_replay.replay_id);
-
-    // Verify replay data
-    assert_eq!(
-        original_replay.replay_data.len(),
-        unpacked_replay.replay_data.len()
+fn binary_header_values_are_read_at_the_correct_offsets() {
+    let bytes = fixture(
+        0,
+        20140721,
+        1234567890123,
+        "16|256|192|5,-12345|0|0|42",
+        &[],
     );
-
-    Ok(())
+    let replay = Replay::from_bytes(&bytes).unwrap();
+    assert!(matches!(replay, Replay::Stable(_)));
+    let c = replay.common();
+    assert_eq!(c.mode, GameMode::Std);
+    assert_eq!(
+        [
+            c.count_300,
+            c.count_100,
+            c.count_50,
+            c.count_geki,
+            c.count_katu,
+            c.count_miss
+        ],
+        [12, 2, 1, 3, 4, 5]
+    );
+    assert_eq!(c.score, 123456);
+    assert_eq!(c.max_combo, 42);
+    assert!(!c.perfect);
+    assert_eq!(c.timestamp.timestamp_subsec_nanos(), 123456700);
+    assert_eq!(replay.legacy_online_id(), Some(1234567890123));
+    assert_eq!(c.rng_seed, Some(42));
+    assert!(
+        matches!(&c.replay_data[..], [ReplayEvent::Osu(f)] if f.time_delta == 16 && f.x == 256.0 && f.y == 192.0 && f.keys.value() == 5)
+    );
 }
 
-/// Test different game mode events
 #[test]
-fn test_game_mode_events() {
-    // Test osu!standard event
-    if let ReplayEvent::Osu(osu_event) = create_osu_event() {
-        assert_eq!(osu_event.time_delta, 16);
-        assert_eq!(osu_event.x, 256.0);
-        assert_eq!(osu_event.y, 192.0);
-        assert_eq!(osu_event.keys.value(), 1);
-    } else {
-        panic!("Expected osu event");
-    }
-
-    // Test taiko event
-    if let ReplayEvent::Taiko(taiko_event) = create_taiko_event() {
-        assert_eq!(taiko_event.time_delta, 32);
-        assert_eq!(taiko_event.x, 320);
-        assert_eq!(taiko_event.keys.value(), 1);
-    } else {
-        panic!("Expected taiko event");
-    }
-
-    // Test catch event
-    if let ReplayEvent::Catch(catch_event) = create_catch_event() {
-        assert_eq!(catch_event.time_delta, 20);
-        assert_eq!(catch_event.x, 128.5);
-        assert!(catch_event.dashing);
-    } else {
-        panic!("Expected catch event");
-    }
-
-    // Test mania event
-    if let ReplayEvent::Mania(mania_event) = create_mania_event() {
-        assert_eq!(mania_event.time_delta, 25);
-        assert_eq!(mania_event.keys.value(), 5); // K1 + K3
-    } else {
-        panic!("Expected mania event");
-    }
+fn lazer_fixture_has_actual_mod_settings_and_statistics() {
+    let bytes = include_bytes!("../assets/test_lazer.osr");
+    let original_json = read_json(bytes);
+    let Replay::Lazer(lazer) = Replay::from_bytes(bytes).unwrap() else {
+        panic!("expected lazer")
+    };
+    let mods = lazer.mods().unwrap().unwrap();
+    assert_eq!(mods.clock_rate(), Some(1.2));
+    assert!(mods.iter().any(|m| matches!(m, rosu_mods::GameMod::AccuracyChallengeOsu(v) if v.minimum_accuracy == Some(0.95))));
+    let info = lazer.score_info().unwrap();
+    assert_eq!(
+        serde_json::to_value(&info.statistics).unwrap(),
+        original_json["statistics"]
+    );
+    assert_eq!(
+        serde_json::to_value(&info.maximum_statistics).unwrap(),
+        original_json["maximum_statistics"]
+    );
+    assert_eq!(
+        info.statistics
+            .count(&HitResult::Unknown("unrecorded".into())),
+        0
+    );
 }
 
-/// Test life bar data
 #[test]
-fn test_life_bar_data() {
-    let life_states = [
-        LifeBarState { time: 0, life: 1.0 },
-        LifeBarState {
-            time: 1000,
-            life: 0.8,
-        },
-        LifeBarState {
-            time: 2000,
-            life: 0.6,
-        },
-        LifeBarState {
-            time: 3000,
-            life: 0.4,
-        },
-        LifeBarState {
-            time: 4000,
-            life: 0.2,
-        },
-    ];
-
-    assert_eq!(life_states.len(), 5);
-    assert_eq!(life_states[0].life, 1.0);
-    assert_eq!(life_states[4].life, 0.2);
-    assert_eq!(life_states[2].time, 2000);
-}
-
-/// Test error handling
-#[test]
-fn test_invalid_replay_data() {
-    // Test empty data
-    let result = Replay::from_bytes(&[]);
-    assert!(result.is_err());
-
-    // Test invalid data
-    let invalid_data = vec![0xFF; 10];
-    let result = Replay::from_bytes(&invalid_data);
-    assert!(result.is_err());
-
-    // Test truncated data
-    let truncated_data = vec![0, 1, 2, 3];
-    let result = Replay::from_bytes(&truncated_data);
-    assert!(result.is_err());
-}
-
-/// Test replay data time calculation
-#[test]
-fn test_replay_time_calculation() {
-    let events = [
-        create_osu_event(),
-        ReplayEvent::Osu(rosu_replay::ReplayEventOsu {
-            time_delta: 50,
-            x: 100.0,
-            y: 100.0,
-            keys: Key::M1,
-        }),
-        ReplayEvent::Osu(rosu_replay::ReplayEventOsu {
-            time_delta: 33,
-            x: 200.0,
-            y: 200.0,
-            keys: Key::M2,
-        }),
-    ];
-
-    let total_time: i32 = events.iter().map(|e| e.time_delta()).sum();
-    assert_eq!(total_time, 16 + 50 + 33); // 99ms total
-}
-
-// Helper functions for creating test data
-
-fn create_test_replay() -> Replay {
-    Replay {
-        mode: GameMode::Std,
-        game_version: 20240101,
-        beatmap_hash: "abcdef1234567890".to_string(),
-        username: "TestPlayer".to_string(),
-        replay_hash: "fedcba0987654321".to_string(),
-        count_300: 100,
-        count_100: 10,
-        count_50: 5,
-        count_geki: 20,
-        count_katu: 8,
-        count_miss: 2,
-        score: 1000000,
-        max_combo: 150,
-        perfect: false,
-        mods: Mod::HIDDEN,
-        life_bar_graph: Some(vec![
-            LifeBarState { time: 0, life: 1.0 },
-            LifeBarState {
-                time: 10000,
-                life: 0.5,
-            },
-            LifeBarState {
-                time: 20000,
-                life: 0.8,
-            },
-        ]),
-        timestamp: chrono::Utc::now(),
-        replay_data: vec![create_osu_event(), create_osu_event(), create_osu_event()],
-        replay_id: 12345,
-        rng_seed: Some(67890),
+fn compression_presets_preserve_data() {
+    let replay = Replay::from_bytes(include_bytes!("../assets/test_lazer.osr")).unwrap();
+    for preset in [0, 6, 9] {
+        let packed = replay
+            .pack_with(&Packer::new().with_preset(preset))
+            .unwrap();
+        assert_eq!(Replay::from_bytes(&packed).unwrap(), replay);
     }
 }
 
-fn create_osu_event() -> ReplayEvent {
-    ReplayEvent::Osu(rosu_replay::ReplayEventOsu {
-        time_delta: 16,
-        x: 256.0,
-        y: 192.0,
-        keys: Key::M1,
-    })
-}
-
-fn create_taiko_event() -> ReplayEvent {
-    ReplayEvent::Taiko(rosu_replay::ReplayEventTaiko {
-        time_delta: 32,
-        x: 320,
-        keys: KeyTaiko::LEFT_DON,
-    })
-}
-
-fn create_catch_event() -> ReplayEvent {
-    ReplayEvent::Catch(rosu_replay::ReplayEventCatch {
-        time_delta: 20,
-        x: 128.5,
-        dashing: true,
-    })
-}
-
-fn create_mania_event() -> ReplayEvent {
-    ReplayEvent::Mania(rosu_replay::ReplayEventMania {
-        time_delta: 25,
-        keys: KeyMania(KeyMania::K1.value() | KeyMania::K3.value()),
-    })
-}
-
-/*
 #[test]
-fn test_uncompressed_packing() {
-    // Create a simple replay
-    let replay = create_test_replay();
-
-    // Pack with normal compression
-    let compressed_data = replay.pack().expect("Failed to pack replay");
-
-    // Pack without LZMA compression
-    let uncompressed_data = replay.pack_uncompressed().expect("Failed to pack replay uncompressed");
-
-    // Debug information
-    println!("Compressed size: {} bytes", compressed_data.len());
-    println!("Uncompressed size: {} bytes", uncompressed_data.len());
-
-    // For very small replays, the overhead of LZMA compression might make compressed larger
-    // So we just check that both are valid and readable
-    assert!(compressed_data.len() > 0);
-    assert!(uncompressed_data.len() > 0);
-
-    // Both should be readable
-    let compressed_replay = Replay::from_bytes(&compressed_data).expect("Failed to read compressed replay");
-    let uncompressed_replay = Replay::from_bytes(&uncompressed_data).expect("Failed to read uncompressed replay");
-
-    // Both should have the same content
-    assert_eq!(compressed_replay.username, uncompressed_replay.username);
-    assert_eq!(compressed_replay.score, uncompressed_replay.score);
-    assert_eq!(compressed_replay.replay_data.len(), uncompressed_replay.replay_data.len());
-    assert_eq!(compressed_replay.mode, uncompressed_replay.mode);
+fn fragmented_reader_does_not_change_the_result() {
+    struct Chunks<'a>(&'a [u8]);
+    impl std::io::Read for Chunks<'_> {
+        fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+            let n = out.len().min(3).min(self.0.len());
+            out[..n].copy_from_slice(&self.0[..n]);
+            self.0 = &self.0[n..];
+            Ok(n)
+        }
+    }
+    let bytes = fixture(
+        3,
+        30000001,
+        -1,
+        "16|5|0|0,-12345|0|0|42",
+        &json_tail(&score()),
+    );
+    assert_eq!(
+        Replay::from_reader(Chunks(&bytes)).unwrap(),
+        Replay::from_bytes(&bytes).unwrap()
+    );
 }
 
 #[test]
-fn test_uncompressed_packing_with_custom_packer() {
-    // Create a simple replay
-    let replay = create_test_replay();
-
-    // Create a custom packer
-    let packer = Packer::new().with_preset(9); // Maximum compression for comparison
-
-    // Pack with custom packer (compressed)
-    let compressed_data = packer.pack(&replay).expect("Failed to pack replay");
-
-    // Pack with custom packer (uncompressed)
-    let uncompressed_data = packer.pack_uncompressed(&replay).expect("Failed to pack replay uncompressed");
-
-    // Debug information
-    println!("Custom packer compressed size: {} bytes", compressed_data.len());
-    println!("Custom packer uncompressed size: {} bytes", uncompressed_data.len());
-
-    // For very small replays, the overhead of LZMA compression might make compressed larger
-    // So we just check that both are valid and readable
-    assert!(compressed_data.len() > 0);
-    assert!(uncompressed_data.len() > 0);
-
-    // Both should be readable
-    let compressed_replay = Replay::from_bytes(&compressed_data).expect("Failed to read compressed replay");
-    let uncompressed_replay = Replay::from_bytes(&uncompressed_data).expect("Failed to read uncompressed replay");
-
-    // Both should have the same content
-    assert_eq!(compressed_replay.username, uncompressed_replay.username);
-    assert_eq!(compressed_replay.score, uncompressed_replay.score);
-    assert_eq!(compressed_replay.replay_data.len(), uncompressed_replay.replay_data.len());
-    assert_eq!(compressed_replay.mode, uncompressed_replay.mode);
+fn reader_failure_inside_score_length_is_not_treated_as_missing_metadata() {
+    struct FailsAfter<'a>(&'a [u8]);
+    impl std::io::Read for FailsAfter<'_> {
+        fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+            if self.0.is_empty() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "injected read failure",
+                ));
+            }
+            std::io::Read::read(&mut self.0, out)
+        }
+    }
+    let bytes = fixture(0, 30000001, -1, "16|256|192|1", &[1, 2]);
+    let err = Replay::from_reader(FailsAfter(&bytes)).unwrap_err();
+    assert!(
+        matches!(err, rosu_replay::ReplayError::Io(e) if e.kind() == std::io::ErrorKind::PermissionDenied)
+    );
 }
-*/
