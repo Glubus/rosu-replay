@@ -1,12 +1,16 @@
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Utc};
-use liblzma::decode_all;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Cursor};
 use std::path::Path;
 
-use crate::{error::ReplayError, packer::Packer, types::*, unpacker::Unpacker};
+use crate::{
+    error::ReplayError,
+    packer::Packer,
+    types::*,
+    unpacker::{Unpacker, MAX_DECOMPRESSED_LEN},
+};
 
 /// A replay found in a `.osr` file, or following the osr format.
 ///
@@ -225,7 +229,10 @@ pub fn parse_replay_data(
     };
 
     let decompressed_data = if !decompressed {
-        decode_all(&data[..]).map_err(|e| ReplayError::LzmaCustom(format!("{}", e)))?
+        Unpacker::<&[u8]>::decompress(&data, MAX_DECOMPRESSED_LEN).map_err(|e| match e {
+            ReplayError::Io(e) => ReplayError::LzmaCustom(e.to_string()),
+            other => other,
+        })?
     } else {
         data
     };

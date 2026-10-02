@@ -248,6 +248,7 @@ match Replay::from_path("maybe_invalid.osr") {
     Err(ReplayError::Parse(e)) => println!("Parse error: {}", e),
     Err(ReplayError::Lzma(e)) => println!("Compression error: {}", e),
     Err(ReplayError::Utf8(e)) => println!("Text encoding error: {}", e),
+    Err(e) => println!("Other error: {}", e), // InvalidFormat, UnexpectedEof, ...
 }
 ```
 
