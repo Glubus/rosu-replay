@@ -6,7 +6,7 @@ use std::io::Read;
 
 /// Upper bound on any decompressed block (play data, lazer score info).
 /// Real replays are a few MB at most; this only stops decompression bombs.
-const MAX_DECOMPRESSED_LEN: u64 = 256 * 1024 * 1024;
+pub(crate) const MAX_DECOMPRESSED_LEN: u64 = 256 * 1024 * 1024;
 
 /// Helper struct for unpacking .osr format data
 pub struct Unpacker<R: Read> {
@@ -47,7 +47,7 @@ impl<R: Read> Unpacker<R> {
     }
 
     /// Decompresses a LZMA/XZ block, refusing to expand past `limit` bytes.
-    fn decompress(data: &[u8], limit: u64) -> Result<Vec<u8>, ReplayError> {
+    pub(crate) fn decompress(data: &[u8], limit: u64) -> Result<Vec<u8>, ReplayError> {
         let mut buffer = Vec::new();
         let read = read::XzDecoder::new_multi_decoder(data)
             .take(limit + 1)
@@ -118,10 +118,9 @@ impl<R: Read> Unpacker<R> {
         let unix_seconds = since_epoch.div_euclid(TICKS_PER_SECOND);
         let nanoseconds = (since_epoch.rem_euclid(TICKS_PER_SECOND) * 100) as u32;
 
-        Ok(Utc
-            .timestamp_opt(unix_seconds, nanoseconds)
+        Utc.timestamp_opt(unix_seconds, nanoseconds)
             .single()
-            .unwrap_or_else(Utc::now))
+            .ok_or_else(|| ReplayError::InvalidFormat("timestamp out of range".to_string()))
     }
 
     pub fn unpack_play_data(
@@ -275,15 +274,18 @@ impl<R: Read> Unpacker<R> {
     }
 
     pub fn unpack_lazer_score_info(&mut self) -> Result<Option<LazerScoreInfo>, ReplayError> {
-        // The block is optional: a clean EOF here means it is absent.
-        // Any other IO error is real and must not be swallowed.
-        let len = match self.unpack_int() {
-            Ok(len) => len,
-            Err(ReplayError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                return Ok(None)
-            }
-            Err(e) => return Err(e),
-        };
+        // The block is optional: no bytes at all means it is absent. A partial
+        // length field is truncation and any other IO error is real, so both
+        // must surface.
+        let mut len_bytes = Vec::with_capacity(4);
+        (&mut self.reader).take(4).read_to_end(&mut len_bytes)?;
+        if len_bytes.is_empty() {
+            return Ok(None);
+        }
+        let len_bytes: [u8; 4] = len_bytes
+            .try_into()
+            .map_err(|_| std::io::Error::from(std::io::ErrorKind::UnexpectedEof))?;
+        let len = u32::from_le_bytes(len_bytes);
 
         let compressed_data = self.read_block(u64::from(len))?;
         let data_str =
@@ -449,5 +451,18 @@ mod tests {
             failing.unpack_lazer_score_info(),
             Err(ReplayError::Io(_))
         ));
+    }
+
+    #[test]
+    fn lazer_block_with_partial_length_is_truncation() {
+        for n in 1..4 {
+            let mut u = Unpacker::new(Cursor::new(vec![0u8; n]));
+            match u.unpack_lazer_score_info() {
+                Err(ReplayError::Io(e)) => {
+                    assert_eq!(e.kind(), std::io::ErrorKind::UnexpectedEof)
+                }
+                other => panic!("{n} byte(s): expected UnexpectedEof, got {other:?}"),
+            }
+        }
     }
 }
