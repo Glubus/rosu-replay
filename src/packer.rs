@@ -41,6 +41,14 @@ impl Packer {
         Ok(())
     }
 
+    /// Writes a block length as u32, rejecting blocks the format cannot describe
+    /// instead of silently truncating the length.
+    fn pack_len(&self, writer: &mut impl Write, len: usize) -> Result<(), ReplayError> {
+        let len = u32::try_from(len)
+            .map_err(|_| ReplayError::InvalidFormat("block larger than 4 GiB".to_string()))?;
+        self.pack_int(writer, len)
+    }
+
     fn pack_long(&self, writer: &mut impl Write, data: i64) -> Result<(), ReplayError> {
         writer.write_i64::<LittleEndian>(data)?;
         Ok(())
@@ -92,8 +100,13 @@ impl Packer {
         let unix_timestamp = timestamp.timestamp();
         let nanoseconds = timestamp.timestamp_subsec_nanos();
 
-        let ticks =
-            TICKS_TO_UNIX_EPOCH + (unix_timestamp * TICKS_PER_SECOND) + (nanoseconds as i64 / 100);
+        let ticks = unix_timestamp
+            .checked_mul(TICKS_PER_SECOND)
+            .and_then(|t| t.checked_add(TICKS_TO_UNIX_EPOCH))
+            .and_then(|t| t.checked_add(nanoseconds as i64 / 100))
+            .ok_or_else(|| {
+                ReplayError::InvalidFormat("timestamp out of range for .osr ticks".to_string())
+            })?;
 
         self.pack_long(writer, ticks)?;
         Ok(())
@@ -181,7 +194,7 @@ impl Packer {
         encoder.finish()?;
 
         // Write length and compressed data
-        self.pack_int(writer, compressed.len() as u32)?;
+        self.pack_len(writer, compressed.len())?;
         writer.write_all(&compressed)?;
 
         Ok(())
@@ -234,7 +247,7 @@ impl Packer {
 
         // Write length and uncompressed data
         let data_bytes = data.as_bytes();
-        self.pack_int(writer, data_bytes.len() as u32)?;
+        self.pack_len(writer, data_bytes.len())?;
         writer.write_all(data_bytes)?;
 
         Ok(())
@@ -257,7 +270,7 @@ impl Packer {
         encoder.write_all(data_bytes)?;
         encoder.finish()?;
 
-        self.pack_int(writer, compressed.len() as u32)?;
+        self.pack_len(writer, compressed.len())?;
         writer.write_all(&compressed)?;
 
         Ok(())
