@@ -213,6 +213,7 @@ The .osr format is a binary format used by osu! to store replay data. This libra
 - ✅ Life bar data parsing and generation
 - ✅ Timestamp conversion (Windows ticks ↔ Unix timestamps)
 - ✅ Both 32-bit and 64-bit replay ID formats
+- ✅ osu!lazer replays: the optional trailing score-info block is parsed into `lazer_score_info`, and `Replay::is_lazer()` tells lazer replays (`game_version >= 30_000_000`) from stable ones
 - ✅ All osu! client versions and replay format variations
 
 ## 🔧 Advanced Usage
