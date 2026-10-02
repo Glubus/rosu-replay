@@ -59,6 +59,17 @@ pub struct Replay {
 }
 
 impl Replay {
+    /// First `game_version` written by osu!lazer. Stable never reaches this range.
+    pub const FIRST_LAZER_VERSION: u32 = 30_000_000;
+
+    /// Whether this replay comes from osu!lazer (as opposed to osu!stable).
+    ///
+    /// Lazer replays are stable replays followed by an optional score-info
+    /// block, so this is purely a function of `game_version`.
+    pub fn is_lazer(&self) -> bool {
+        self.game_version >= Self::FIRST_LAZER_VERSION
+    }
+
     /// Creates a new `Replay` object from the `.osr` file at the given path.
     ///
     /// # Arguments
