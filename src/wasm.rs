@@ -107,85 +107,85 @@ impl WasmReplay {
     /// Get the player username
     #[wasm_bindgen(getter)]
     pub fn username(&self) -> String {
-        self.inner.username.clone()
+        self.inner.common().username.clone()
     }
 
     /// Get the beatmap MD5 hash
     #[wasm_bindgen(getter)]
     pub fn beatmap_hash(&self) -> String {
-        self.inner.beatmap_hash.clone()
+        self.inner.common().beatmap_hash.clone()
     }
 
     /// Get the replay hash
     #[wasm_bindgen(getter)]
     pub fn replay_hash(&self) -> String {
-        self.inner.replay_hash.clone()
+        self.inner.common().replay_hash.clone()
     }
 
     /// Get the score
     #[wasm_bindgen(getter)]
     pub fn score(&self) -> u32 {
-        self.inner.score
+        self.inner.common().score
     }
 
     /// Get the max combo
     #[wasm_bindgen(getter)]
     pub fn max_combo(&self) -> u16 {
-        self.inner.max_combo
+        self.inner.common().max_combo
     }
 
     /// Get the number of 300s
     #[wasm_bindgen(getter)]
     pub fn count_300(&self) -> u16 {
-        self.inner.count_300
+        self.inner.common().count_300
     }
 
     /// Get the number of 100s
     #[wasm_bindgen(getter)]
     pub fn count_100(&self) -> u16 {
-        self.inner.count_100
+        self.inner.common().count_100
     }
 
     /// Get the number of 50s
     #[wasm_bindgen(getter)]
     pub fn count_50(&self) -> u16 {
-        self.inner.count_50
+        self.inner.common().count_50
     }
 
     /// Get the number of gekis
     #[wasm_bindgen(getter)]
     pub fn count_geki(&self) -> u16 {
-        self.inner.count_geki
+        self.inner.common().count_geki
     }
 
     /// Get the number of katus
     #[wasm_bindgen(getter)]
     pub fn count_katu(&self) -> u16 {
-        self.inner.count_katu
+        self.inner.common().count_katu
     }
 
     /// Get the number of misses
     #[wasm_bindgen(getter)]
     pub fn count_miss(&self) -> u16 {
-        self.inner.count_miss
+        self.inner.common().count_miss
     }
 
     /// Get the game mode
     #[wasm_bindgen(getter)]
     pub fn mode(&self) -> WasmGameMode {
-        self.inner.mode.into()
+        self.inner.common().mode.into()
     }
 
     /// Check if the replay is perfect (no misses)
     #[wasm_bindgen(getter)]
     pub fn is_perfect(&self) -> bool {
-        self.inner.count_miss == 0
+        self.inner.common().count_miss == 0
     }
 
     /// Get the number of replay events
     #[wasm_bindgen(getter)]
     pub fn event_count(&self) -> usize {
-        self.inner.replay_data.len()
+        self.inner.common().replay_data.len()
     }
 
     /// Pack the replay back to bytes

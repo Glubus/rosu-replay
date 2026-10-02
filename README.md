@@ -1,343 +1,118 @@
 # rosu-replay
 
-[![Crates.io](https://img.shields.io/crates/v/rosu-replay.svg)](https://crates.io/crates/rosu-replay)
-[![Documentation](https://docs.rs/rosu-replay/badge.svg)](https://docs.rs/rosu-replay)
-[![License](https://img.shields.io/crates/l/rosu-replay.svg)](LICENSE)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/Glubus/rosu-replay/ci.yml?branch=master)](https://github.com/Glubus/rosu-replay/actions)
+Read and write osu! `.osr` replays in Rust, including stable and lazer exports.
 
-A high-performance Rust library for parsing and writing osu! replay files (.osr format), with WebAssembly support.
+## Formats and API
 
-This library is a **faithful port of the Python [`osrparse`](https://github.com/kszlim/osu-replay-parser) library**, providing the same functionality for parsing and manipulating osu! replay files in Rust with improved performance, memory safety, and additional features.
+`Replay` is an enum with `Stable(StableReplay)` and `Lazer(LazerReplay)` variants.
+Both formats share binary IO and LZMA compression. Lazer's `.osr` export stores
+an additional LZMA-compressed JSON block from format version `30000001` onward.
+The format version is distinct from the lazer client build string.
 
-## ✨ Features
-
-- 🎮 **Parse .osr replay files** from disk, memory, or web
-- 📊 **Extract complete replay metadata** including:
-  - Player information (username, score, combo, etc.)
-  - Game metadata (mode, mods, timestamp, etc.)
-  - Hit statistics (300s, 100s, 50s, misses, etc.)
-  - Replay events (cursor movement, key presses)
-  - Life bar data over time
-- 💾 **Write replay files** back to .osr format (compressed and uncompressed)
-- 🎯 **Support all game modes**: osu!standard, osu!taiko, osu!catch, osu!mania
-- 🌐 **API compatibility** for parsing replay data from osu! API v1 responses
-- 🕸️ **WebAssembly support** for browser and Node.js environments
-- ⚡ **High performance** with optimized LZMA compression via `liblzma`
-- 🦀 **Memory safe** Rust implementation with zero-copy parsing where possible
-- 📖 **Comprehensive documentation** and examples
-- 🧪 **Extensive testing** with 40+ tests covering all functionality
-
-## 🚀 Installation
-
-### Rust/Cargo
-
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-rosu-replay = "0.1"
-```
-
-### WebAssembly
-
-For WASM usage, enable the `wasm` feature:
-
-```toml
-[dependencies]
-rosu-replay = { version = "0.1", features = ["wasm"] }
-```
-
-Then compile with:
-
-```bash
-wasm-pack build --features wasm --target web
-```
-
-## 📖 Quick Start
-
-### Basic Replay Parsing
-
-```rust
+```rust,no_run
 use rosu_replay::Replay;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Parse a replay file
-    let replay = Replay::from_path("path/to/replay.osr")?;
-    
-    // Access basic information
-    println!("Player: {}", replay.username);
-    println!("Score: {}", replay.score);
-    println!("Max Combo: {}", replay.max_combo);
-    println!("Game Mode: {:?}", replay.mode);
-    println!("Mods: {:?}", replay.mods);
-    
-    // Access hit statistics
-    println!("300s: {}, 100s: {}, 50s: {}, Misses: {}", 
-        replay.count_300, replay.count_100, replay.count_50, replay.count_miss);
-    
-    // Check if it's a perfect play
-    println!("Perfect: {}", replay.count_miss == 0);
-    
+    let mut replay = Replay::from_path("replay.osr")?;
+    println!("{}: {} frames", replay.common().username, replay.common().replay_data.len());
+    replay.common_mut().username = "EditedPlayer".into();
+
+    match &replay {
+        Replay::Stable(stable) => {
+            println!("Legacy mods: {:?}, ID: {:?}", stable.mods(), stable.online_id());
+        }
+        Replay::Lazer(lazer) => {
+            if let Some(info) = lazer.score_info() {
+                println!("Client: {}, lazer ID: {}", info.client_version, info.online_id);
+                println!("Mods for this ruleset: {:?}", lazer.mods()?);
+            }
+        }
+    }
+    replay.write_path("edited.osr")?;
     Ok(())
 }
 ```
 
-### Working with Replay Events
+`StableReplay::new` and `LazerReplay::new` take `ReplayCommon`, a validated
+`StableVersion`/`LazerVersion`, and their format-specific fields. Constructors,
+serde deserialization and writing check version-dependent invariants. Editing
+common data is supported; writing rejects frames from a different ruleset.
 
-```rust
-use rosu_replay::{Replay, ReplayEvent};
+## Lazer metadata
 
-let replay = Replay::from_path("replay.osr")?;
+- `LazerScoreInfo` uses signed IDs and a signed 64-bit score without mods.
+- `HitStatistics` stores sparse `HitResult` counts, including unknown names.
+  `statistics.count(&HitResult::Perfect)` returns zero when absent.
+- `LazerMod` preserves raw settings and additional fields, including settings
+  not understood by the installed `rosu-mods` version.
+- `LazerReplay::mods()` offers a typed `rosu_mods::GameMods` view using the
+  replay's mode. It can return an error for settings the dependency cannot
+  interpret; the raw metadata remains available and can still be written.
+- Additional score JSON fields are retained in `LazerScoreInfo::extra`.
 
-// Iterate through replay events
-for (i, event) in replay.replay_data.iter().enumerate().take(10) {
-    match event {
-        ReplayEvent::Osu(osu_event) => {
-            println!("Frame {}: Cursor at ({:.1}, {:.1}) at +{}ms, keys: {}", 
-                i, osu_event.x, osu_event.y, osu_event.time_delta, osu_event.keys.value());
-        }
-        ReplayEvent::Taiko(taiko_event) => {
-            println!("Frame {}: Taiko input at +{}ms, keys: {}", 
-                i, taiko_event.time_delta, taiko_event.keys.value());
-        }
-        ReplayEvent::Catch(catch_event) => {
-            println!("Frame {}: Catch at x={:.1}, +{}ms, dashing: {}", 
-                i, catch_event.x, catch_event.time_delta, catch_event.dashing);
-        }
-        ReplayEvent::Mania(mania_event) => {
-            println!("Frame {}: Mania keys {} at +{}ms", 
-                i, mania_event.keys.value(), mania_event.time_delta);
-        }
-    }
-}
-```
+Round trips preserve semantic contents, not compressed byte identity or JSON
+formatting. Empty/null score blocks are written as a zero-length block. Optional
+null JSON values may be omitted; missing default-valued fields may be emitted.
+Legacy online IDs preserve zero and negative sentinels; `None` means the old
+stable version has no ID field. Lazer's legacy ID and JSON online ID are separate.
 
-### Modifying and Writing Replays
+## Input limits and errors
 
-```rust
-use rosu_replay::{Replay, Packer};
+`Replay::from_reader_with_limits(reader, ReadLimits { .. })` allows callers to
+adjust size limits. Defaults: strings 16 MiB, compressed blocks 64 MiB,
+decompressed frames 256 MiB, decompressed score JSON 16 MiB. LZMA decoder memory
+is independently capped at 256 MiB. Forged lengths do not trigger eager allocations.
+Truncated blocks and IO failures are errors, including truncated lazer lengths.
 
-let mut replay = Replay::from_path("input.osr")?;
+`Packer::new().with_preset(0..=9)` selects the LZMA compression preset.
+`pack_uncompressed()` is retained only for diagnostic dumps: its output is **not
+valid `.osr`** and cannot be read by the ordinary replay reader. Lazer metadata
+is still included in that diagnostic output.
 
-// Modify replay data
-replay.username = "Modified Player".to_string();
-replay.score = 1000000;
+## API replay data
 
-// Write compressed (default)
-replay.write_path("modified_replay.osr")?;
+For the frames-only response from osu! API v1, use
+`parse_replay_data(data, decoded, decompressed, mode)`. The booleans indicate
+whether base64 decoding and decompression have already been performed.
 
-// Write uncompressed for faster loading
-replay.write_path_uncompressed("uncompressed_replay.osr")?;
+## Migration from 0.2.2
 
-// Custom compression settings
-let custom_packer = Packer::new().with_preset(9); // Maximum compression
-let bytes = replay.pack_with(&custom_packer)?;
-std::fs::write("custom_compressed.osr", bytes)?;
-```
+This source change breaks the former flat `Replay` struct API:
 
-### Working with API Data
+| Previous access | New access |
+| --- | --- |
+| `replay.username`, `replay.replay_data` | `replay.common().username`, `replay.common().replay_data` |
+| Assigning common fields | `replay.common_mut()` |
+| `replay.game_version` | `replay.game_version()` |
+| `replay.mods` (legacy bitflags) | `replay.legacy_mods()` |
+| `replay.replay_id` | `replay.legacy_online_id()` (raw `Option<i64>`) |
+| `replay.lazer_score_info` | Match `Replay::Lazer`, then `score_info()` / `score_info_mut()` |
+| Typed lazer mods | `lazer.mods()?` |
+| `LazerScoreInfoStatistics` | `HitStatistics` with all known and unknown judgements |
+| `Replay { ... }` literal | Format-specific constructor, then `.into()` |
 
-```rust
-use rosu_replay::{parse_replay_data, GameMode};
+The old `packer::Packer` and `unpacker::Unpacker` import paths remain available;
+the shared implementation lives in `codec`. Public types are reexported at the
+crate root. Serde's representation of `Replay` is now tagged by variant.
 
-// Parse replay data from osu! API v1
-let api_data = b"base64_encoded_replay_data_from_api";
-let events = parse_replay_data(api_data, false, false, GameMode::Std)?;
+## Verification
 
-for event in events.iter().take(5) {
-    if let rosu_replay::ReplayEvent::Osu(osu_event) = event {
-        println!("API Event: ({:.1}, {:.1}) +{}ms", 
-            osu_event.x, osu_event.y, osu_event.time_delta);
-    }
-}
-```
-
-## 🕸️ WebAssembly Usage
-
-### Browser JavaScript
-
-```javascript
-import init, { WasmReplay, WasmGameMode, parse_replay_data_wasm } from './pkg/rosu_replay.js';
-
-async function parseReplay() {
-    await init();
-    
-    // Load replay file (from file input, fetch, etc.)
-    const replayBytes = new Uint8Array(await file.arrayBuffer());
-    
-    // Parse replay
-    const replay = new WasmReplay(replayBytes);
-    
-    console.log(`Player: ${replay.username}`);
-    console.log(`Score: ${replay.score}`);
-    console.log(`Mode: ${replay.mode}`);
-    console.log(`Events: ${replay.event_count}`);
-    
-    // Pack back to bytes
-    const packedBytes = replay.pack();
-}
-```
-
-### Node.js
-
-```javascript
-const { WasmReplay, parse_replay_data_wasm, version } = require('./pkg/rosu_replay.js');
-const fs = require('fs');
-
-// Read replay file
-const replayData = fs.readFileSync('replay.osr');
-const replay = new WasmReplay(replayData);
-
-console.log(`Parsed with rosu-replay v${version()}`);
-console.log(`Player: ${replay.username}, Score: ${replay.score}`);
-```
-
-## 🎮 Game Mode Support
-
-This library supports all osu! game modes with mode-specific event data:
-
-| Mode | Enum | Event Type | Data Fields |
-|------|------|------------|-------------|
-| osu!standard | `GameMode::Std` | `ReplayEventOsu` | x, y coordinates + key states |
-| osu!taiko | `GameMode::Taiko` | `ReplayEventTaiko` | drum position + hit types |
-| osu!catch | `GameMode::Catch` | `ReplayEventCatch` | horizontal position + dash state |
-| osu!mania | `GameMode::Mania` | `ReplayEventMania` | multi-lane key states |
-
-## 📁 File Format Support
-
-The .osr format is a binary format used by osu! to store replay data. This library handles:
-
-- ✅ All metadata fields (player, score, mods, timestamp, etc.)
-- ✅ LZMA-compressed replay event data (via `liblzma` for optimal performance)
-- ✅ Uncompressed replay data
-- ✅ Life bar data parsing and generation
-- ✅ Timestamp conversion (Windows ticks ↔ Unix timestamps)
-- ✅ Both 32-bit and 64-bit replay ID formats
-- ✅ All osu! client versions and replay format variations
-
-## 🔧 Advanced Usage
-
-### Custom Compression Settings
-
-```rust
-use rosu_replay::{Replay, Packer};
-
-let replay = Replay::from_path("input.osr")?;
-
-// Fastest compression (level 1)
-let fast_packer = Packer::new().with_preset(1);
-let fast_bytes = replay.pack_with(&fast_packer)?;
-
-// Maximum compression (level 9)
-let max_packer = Packer::new().with_preset(9);
-let small_bytes = replay.pack_with(&max_packer)?;
-
-// Default compression (level 6) - good balance
-let default_bytes = replay.pack()?;
-```
-
-### Error Handling
-
-```rust
-use rosu_replay::{Replay, ReplayError};
-
-match Replay::from_path("maybe_invalid.osr") {
-    Ok(replay) => println!("Loaded replay for {}", replay.username),
-    Err(ReplayError::Io(e)) => println!("File error: {}", e),
-    Err(ReplayError::Parse(e)) => println!("Parse error: {}", e),
-    Err(ReplayError::Lzma(e)) => println!("Compression error: {}", e),
-    Err(ReplayError::Utf8(e)) => println!("Text encoding error: {}", e),
-}
-```
-
-### Performance Tips
-
-```rust
-// For batch processing, reuse the same Packer
-let packer = Packer::new().with_preset(6);
-for replay_path in replay_files {
-    let replay = Replay::from_path(replay_path)?;
-    let bytes = replay.pack_with(&packer)?; // Faster than creating new Packer each time
-    // Process bytes...
-}
-
-// Use uncompressed format for faster repeated access
-let replay = Replay::from_path("replay.osr")?;
-let uncompressed_bytes = replay.pack_uncompressed()?; // Faster to parse later
-```
-
-## 📊 Performance
-
-rosu-replay is designed for high performance:
-
-- **Zero-copy parsing** where possible
-- **Optimized LZMA compression** via `liblzma` (faster than previous `lzma-rs`)
-- **Efficient memory usage** with streaming decompression
-- **WASM-optimized** builds for web performance
-
-Benchmarks on a typical replay file:
-- **Parse**: ~1-2ms
-- **Pack (compressed)**: ~3-5ms  
-- **Pack (uncompressed)**: ~0.5ms
-
-## 🧪 Examples
-
-Check out the [`examples/`](examples/) directory for more comprehensive usage:
-
-```bash
-# Run the basic example
-cargo run --example example_1
-
-# Generate documentation with examples
-cargo doc --open
-
-# Run tests including WASM features
-cargo test --features wasm
-```
-
-## 🔄 Migration from 0.1.0
-
-If you're upgrading from an earlier version:
-
-- ✅ **API is backward compatible** - no breaking changes
-- ✅ **Improved performance** with `liblzma` instead of `lzma-rs`
-- ✅ **New WASM support** - opt-in with `wasm` feature
-- ✅ **Better error handling** with more specific error types
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
-
-### Development
-
-```bash
-# Run all tests
+```sh
 cargo test
-
-# Run with WASM features
-cargo test --features wasm
-
-# Build documentation
-cargo doc --open
-
-# Format code
-cargo fmt
-
-# Run linter
-cargo clippy
+cargo test --all-features
+cargo clippy --all-targets --all-features -- -D warnings
+cargo fmt --all -- --check
+cargo run --example example_1 -- assets/test_lazer.osr
 ```
 
-## 📜 License
+Contract tests build binary inputs independently of the production writer, check
+version boundaries and signed values, decode rewritten JSON independently, and
+exercise real stable/lazer fixtures. Fixture failures fail tests rather than skip.
+The `wasm` feature exposes Rust bindings; native binding tests do not constitute
+a browser/WASM runtime test. Cross-compilation was also checked with
+`cargo check` and `cargo build --target wasm32-unknown-unknown --features wasm`; liblzma-sys
+requires a Clang compiler for this target.
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## License
 
-## 🙏 Acknowledgments
-
-- **[kszlim](https://github.com/kszlim)** and contributors for the original [`osrparse`](https://github.com/kszlim/osu-replay-parser) Python library
-- The **osu! community** for documenting the .osr file format
-- **[ppy](https://github.com/ppy)** for creating osu! and maintaining the replay format
-- The **Rust community** for excellent crates like `liblzma`, `wasm-bindgen`, and `chrono`
-
----
-
-**Made with ❤️ for the osu! community**
+MIT. Originally ported from Python's `osrparse`.
