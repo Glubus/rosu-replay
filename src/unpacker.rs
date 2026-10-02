@@ -118,10 +118,9 @@ impl<R: Read> Unpacker<R> {
         let unix_seconds = since_epoch.div_euclid(TICKS_PER_SECOND);
         let nanoseconds = (since_epoch.rem_euclid(TICKS_PER_SECOND) * 100) as u32;
 
-        Ok(Utc
-            .timestamp_opt(unix_seconds, nanoseconds)
+        Utc.timestamp_opt(unix_seconds, nanoseconds)
             .single()
-            .unwrap_or_else(Utc::now))
+            .ok_or_else(|| ReplayError::InvalidFormat("timestamp out of range".to_string()))
     }
 
     pub fn unpack_play_data(
