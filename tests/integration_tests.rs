@@ -412,3 +412,17 @@ fn test_uncompressed_packing_with_custom_packer() {
     assert_eq!(compressed_replay.mode, uncompressed_replay.mode);
 }
 */
+
+/// `is_lazer` flips exactly at the first lazer game version.
+#[test]
+fn test_is_lazer_boundary() {
+    let mut replay = rosu_replay::Replay::from_path("assets/test.osr").unwrap();
+    assert!(!replay.is_lazer());
+
+    replay.game_version = rosu_replay::Replay::FIRST_LAZER_VERSION - 1;
+    assert!(!replay.is_lazer());
+    replay.game_version = rosu_replay::Replay::FIRST_LAZER_VERSION;
+    assert!(replay.is_lazer());
+    replay.game_version = u32::MAX;
+    assert!(replay.is_lazer());
+}
