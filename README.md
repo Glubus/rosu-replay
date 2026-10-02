@@ -250,6 +250,8 @@ match Replay::from_path("maybe_invalid.osr") {
 }
 ```
 
+Parsing is safe on untrusted input: lengths read from the file are never used to pre-allocate memory, truncated files return an `Io` error (`UnexpectedEof`), and decompressed blocks are capped at 256 MiB (`InvalidFormat` beyond that). Packing returns `InvalidFormat` for blocks over 4 GiB or timestamps that do not fit the `.osr` tick format.
+
 ### Performance Tips
 
 ```rust

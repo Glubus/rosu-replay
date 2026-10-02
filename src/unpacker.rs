@@ -4,6 +4,10 @@ use chrono::{DateTime, TimeZone, Utc};
 use liblzma::read;
 use std::io::Read;
 
+/// Upper bound on any decompressed block (play data, lazer score info).
+/// Real replays are a few MB at most; this only stops decompression bombs.
+const MAX_DECOMPRESSED_LEN: u64 = 256 * 1024 * 1024;
+
 /// Helper struct for unpacking .osr format data
 pub struct Unpacker<R: Read> {
     reader: R,
@@ -30,13 +34,47 @@ impl<R: Read> Unpacker<R> {
         Ok(self.reader.read_i64::<LittleEndian>()?)
     }
 
+    /// Reads exactly `len` bytes without trusting `len` for the allocation:
+    /// the buffer only grows as data actually arrives, so a forged length in a
+    /// tiny file cannot trigger a huge allocation.
+    fn read_block(&mut self, len: u64) -> Result<Vec<u8>, ReplayError> {
+        let mut buffer = Vec::new();
+        let read = (&mut self.reader).take(len).read_to_end(&mut buffer)?;
+        if read as u64 != len {
+            return Err(std::io::Error::from(std::io::ErrorKind::UnexpectedEof).into());
+        }
+        Ok(buffer)
+    }
+
+    /// Decompresses a LZMA/XZ block, refusing to expand past `limit` bytes.
+    fn decompress(data: &[u8], limit: u64) -> Result<Vec<u8>, ReplayError> {
+        let mut buffer = Vec::new();
+        let read = read::XzDecoder::new_multi_decoder(data)
+            .take(limit + 1)
+            .read_to_end(&mut buffer)?;
+        if read as u64 > limit {
+            return Err(ReplayError::InvalidFormat(format!(
+                "decompressed data exceeds {limit} bytes"
+            )));
+        }
+        Ok(buffer)
+    }
+
     fn read_uleb128(&mut self) -> Result<usize, ReplayError> {
-        let mut result = 0;
+        let mut result: u64 = 0;
         let mut shift = 0;
 
         loop {
             let byte = self.reader.read_u8()?;
-            result |= ((byte & 0b01111111) as usize) << shift;
+            let bits = u64::from(byte & 0b01111111);
+
+            // At shift 63 only one bit still fits in a u64.
+            if shift == 63 && bits > 1 {
+                return Err(ReplayError::InvalidFormat(
+                    "ULEB128 overflows u64".to_string(),
+                ));
+            }
+            result |= bits << shift;
 
             if (byte & 0b10000000) == 0x00 {
                 break;
@@ -48,7 +86,8 @@ impl<R: Read> Unpacker<R> {
             }
         }
 
-        Ok(result)
+        usize::try_from(result)
+            .map_err(|_| ReplayError::InvalidFormat("ULEB128 value too large".to_string()))
     }
 
     pub fn unpack_string(&mut self) -> Result<Option<String>, ReplayError> {
@@ -58,10 +97,8 @@ impl<R: Read> Unpacker<R> {
             0x00 => Ok(None),
             0x0b => {
                 let length = self.read_uleb128()?;
-                let mut buffer = vec![0u8; length];
-                self.reader.read_exact(&mut buffer)?;
-                let string = String::from_utf8(buffer)?;
-                Ok(Some(string))
+                let buffer = self.read_block(length as u64)?;
+                Ok(Some(String::from_utf8(buffer)?))
             }
             _ => Err(ReplayError::InvalidStringByte(indicator)),
         }
@@ -75,11 +112,14 @@ impl<R: Read> Unpacker<R> {
         const TICKS_TO_UNIX_EPOCH: i64 = 621355968000000000;
         const TICKS_PER_SECOND: i64 = 10_000_000;
 
-        let unix_seconds = (ticks - TICKS_TO_UNIX_EPOCH) / TICKS_PER_SECOND;
-        let nanoseconds = ((ticks - TICKS_TO_UNIX_EPOCH) % TICKS_PER_SECOND) * 100;
+        // Saturate instead of overflowing on hostile tick values, and use
+        // euclidean division so pre-epoch timestamps get non-negative nanoseconds.
+        let since_epoch = ticks.saturating_sub(TICKS_TO_UNIX_EPOCH);
+        let unix_seconds = since_epoch.div_euclid(TICKS_PER_SECOND);
+        let nanoseconds = (since_epoch.rem_euclid(TICKS_PER_SECOND) * 100) as u32;
 
         Ok(Utc
-            .timestamp_opt(unix_seconds, nanoseconds as u32)
+            .timestamp_opt(unix_seconds, nanoseconds)
             .single()
             .unwrap_or_else(Utc::now))
     }
@@ -88,15 +128,10 @@ impl<R: Read> Unpacker<R> {
         &mut self,
         mode: GameMode,
     ) -> Result<(Vec<ReplayEvent>, Option<i32>), ReplayError> {
-        let replay_length = self.unpack_int()? as usize;
-        let mut compressed_data = vec![0u8; replay_length];
-        self.reader.read_exact(&mut compressed_data)?;
-
-        let mut buffer = Vec::new();
-
-        read::XzDecoder::new_multi_decoder(compressed_data.as_slice()).read_to_end(&mut buffer)?;
-
-        let data_str = String::from_utf8(buffer)?;
+        let replay_length = self.unpack_int()?;
+        let compressed_data = self.read_block(u64::from(replay_length))?;
+        let data_str =
+            String::from_utf8(Self::decompress(&compressed_data, MAX_DECOMPRESSED_LEN)?)?;
         Self::parse_replay_data(&data_str, mode)
     }
 
@@ -240,25 +275,20 @@ impl<R: Read> Unpacker<R> {
     }
 
     pub fn unpack_lazer_score_info(&mut self) -> Result<Option<LazerScoreInfo>, ReplayError> {
-        match self.unpack_int() {
-            Ok(len) => {
-                let len = len as usize;
-
-                let mut compressed_data = vec![0u8; len];
-                self.reader.read_exact(&mut compressed_data)?;
-
-                let mut buffer = Vec::new();
-
-                read::XzDecoder::new_multi_decoder(compressed_data.as_slice())
-                    .read_to_end(&mut buffer)?;
-
-                let data_str = String::from_utf8(buffer)?;
-                let score_info: LazerScoreInfo = serde_json::from_str(&data_str)?;
-
-                Ok(Some(score_info))
+        // The block is optional: a clean EOF here means it is absent.
+        // Any other IO error is real and must not be swallowed.
+        let len = match self.unpack_int() {
+            Ok(len) => len,
+            Err(ReplayError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                return Ok(None)
             }
-            Err(_) => Ok(None),
-        }
+            Err(e) => return Err(e),
+        };
+
+        let compressed_data = self.read_block(u64::from(len))?;
+        let data_str =
+            String::from_utf8(Self::decompress(&compressed_data, MAX_DECOMPRESSED_LEN)?)?;
+        Ok(Some(serde_json::from_str(&data_str)?))
     }
 
     pub fn unpack(mut self) -> Result<Replay, ReplayError> {
@@ -314,5 +344,110 @@ impl<R: Read> Unpacker<R> {
             rng_seed,
             lazer_score_info,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Write};
+
+    fn compress(data: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut enc = liblzma::write::XzEncoder::new(&mut out, 1);
+        enc.write_all(data).unwrap();
+        enc.finish().unwrap();
+        out
+    }
+
+    #[test]
+    fn decompress_rejects_output_over_limit() {
+        let bomb = compress(&vec![0u8; 4096]);
+        assert!(bomb.len() < 200, "test payload should be a tiny bomb");
+
+        assert_eq!(
+            Unpacker::<&[u8]>::decompress(&bomb, 4096).unwrap().len(),
+            4096
+        );
+        assert!(matches!(
+            Unpacker::<&[u8]>::decompress(&bomb, 4095),
+            Err(ReplayError::InvalidFormat(_))
+        ));
+    }
+
+    #[test]
+    fn forged_block_length_is_eof_not_allocation() {
+        // Claims 4 GiB - 1 but provides 3 bytes.
+        let mut data = Vec::new();
+        data.extend_from_slice(&u32::MAX.to_le_bytes());
+        data.extend_from_slice(&[1, 2, 3]);
+        let mut unpacker = Unpacker::new(Cursor::new(data));
+        let len = unpacker.unpack_int().unwrap();
+        match unpacker.read_block(u64::from(len)) {
+            Err(ReplayError::Io(e)) => assert_eq!(e.kind(), std::io::ErrorKind::UnexpectedEof),
+            other => panic!("expected UnexpectedEof, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn string_with_forged_length_errors() {
+        let mut data = vec![0x0b];
+        data.extend_from_slice(&[0xff, 0xff, 0xff, 0xff, 0x0f]); // ~4 GiB
+        data.extend_from_slice(b"abc");
+        assert!(Unpacker::new(Cursor::new(data)).unpack_string().is_err());
+    }
+
+    #[test]
+    fn uleb128_overflowing_u64_is_rejected() {
+        // 10th byte carries 7 payload bits, only 1 fits.
+        let mut data = vec![0xff; 9];
+        data.push(0x7f);
+        assert!(matches!(
+            Unpacker::new(Cursor::new(data)).read_uleb128(),
+            Err(ReplayError::InvalidFormat(_))
+        ));
+        // u64::MAX is the largest legal value.
+        let mut max = vec![0xff; 9];
+        max.push(0x01);
+        let got = Unpacker::new(Cursor::new(max)).read_uleb128();
+        assert_eq!(got.ok(), usize::try_from(u64::MAX).ok());
+    }
+
+    #[test]
+    fn timestamp_extremes_do_not_panic() {
+        for ticks in [i64::MIN, i64::MIN + 1, -1, 0, i64::MAX] {
+            let mut u = Unpacker::new(Cursor::new(ticks.to_le_bytes().to_vec()));
+            u.unpack_timestamp().unwrap();
+        }
+    }
+
+    #[test]
+    fn pre_epoch_timestamp_keeps_subsecond_part() {
+        const TICKS_TO_UNIX_EPOCH: i64 = 621355968000000000;
+        // 1969-12-31T23:59:59.5
+        let ticks = TICKS_TO_UNIX_EPOCH - 5_000_000;
+        let mut u = Unpacker::new(Cursor::new(ticks.to_le_bytes().to_vec()));
+        let ts = u.unpack_timestamp().unwrap();
+        assert_eq!(ts.timestamp(), -1);
+        assert_eq!(ts.timestamp_subsec_nanos(), 500_000_000);
+    }
+
+    struct FailingReader;
+    impl Read for FailingReader {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+        }
+    }
+
+    #[test]
+    fn lazer_block_absent_at_eof_but_io_errors_propagate() {
+        let mut empty = Unpacker::new(Cursor::new(Vec::new()));
+        assert!(empty.unpack_lazer_score_info().unwrap().is_none());
+
+        let mut failing = Unpacker::new(FailingReader);
+        assert!(matches!(
+            failing.unpack_lazer_score_info(),
+            Err(ReplayError::Io(_))
+        ));
     }
 }

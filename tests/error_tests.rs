@@ -200,3 +200,11 @@ fn test_concurrent_error_handling() {
         assert!(result.is_err());
     }
 }
+
+/// Packing a timestamp whose .osr tick count overflows i64 must error, not wrap or panic.
+#[test]
+fn test_pack_out_of_range_timestamp_errors() {
+    let mut replay = Replay::from_path("assets/test.osr").unwrap();
+    replay.timestamp = chrono::DateTime::<chrono::Utc>::MAX_UTC;
+    assert!(matches!(replay.pack(), Err(ReplayError::InvalidFormat(_))));
+}
